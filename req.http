@@ -1,0 +1,11 @@
+### GET Request with Authorization Bearer Token
+curl --location --request GET 'http://127.0.0.1:8000/api/administracion/empleados/23' \
+--header 'Accept: application/json' \
+--header 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiZGE3MWZjZWUzZDdlYjI3MWI3ZmFmYjI2OGMyYWE1ZTViMjg5ODgwODRiNjU1MDUxNzk4MTkyZmIwMmYzMDdjZWI4NTI4ZDYxMWRhM2FiZTQiLCJpYXQiOjE2Njk3MzM4MTcuMzY4OTY2LCJuYmYiOjE2Njk3MzM4MTcuMzY4OTY4LCJleHAiOjE3MDEyNjk4MTcuMzUyNzI2LCJzdWIiOiI1NCIsInNjb3BlcyI6W119.E8r6M69sfYPEtPtCEh746PbKyEdqM54iH1wVvqHIDtB6UeIal-IRvr6D2Z0ySkCqIbnZf2CVMgUhBF1hMM27mBm9TYvr-H9nFZWDkqBXbW2FLG09e7XXKcfUGH801_Fb_rHNSCtJHPJ4Dm9Du2_m_xqnRZAI8b7Fp3YN6p6sXjYJqsdv_iliHur6o0MTQys3kHE9AlChnS5D4LpPXGKfdBE7x4Tbejt4tf2cjer53DR0TmcWrZTfXh5h-6Qs4rvQrStiPaEYbwKhrs1jr2CSboGpMDvIjvJxGTDNX3ZDNMP5oVUP5s9VF6MzCS7nzFeAhaPhSI4Y5nSbGzNvC9Ftm_umvsdnIOtCTZ5AMLFN0fxbBShNa1221cCDVrLcYudT09-9YNbr8d4xxNV-7CJsOXh8x-nLZyNvlSrGvn8UvJX7L3BUicoG6yTsyHoKI9a84aab-xTeeuR4dNYBSoFuLZ-rTSyaCYe6uQkdBXCmUSHItSZfQmH_pDel6z7Ii57hTqX9fXw-DUjQXa9UO3a2gkNRPX3Pwuz1GLHvFIAW-HXBzR3x8GdZlFcG9uP9qHXZh5mWxjQ8JGbAkk6kD2bHXR71Usz5nvygVQjToHo8_yhLvUueBh492PXcjmReT9Ca7CHsv8U_RyCZATg4imFTTA_ZNDMaJKw6qlHV3cOrCE0'
+
+
+### POST Request with Params
+curl --location --request POST 'http://127.0.0.1:8000/api/auth/register' \
+--header 'Accept: application/json' \
+--header 'Content-Type: application/json' \
+-d '{"username": "cmarvera", "email":"cmarvera@gmail.com", "password":"Keeper12", "password_confirmation":"Keeper12"}'
