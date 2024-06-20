@@ -18,6 +18,23 @@ use App\Http\Controllers\API\Administration\EmployeeVehicleController;
 use App\Http\Controllers\API\Administration\ParkingAreaController;
 use App\Http\Controllers\API\Administration\ParkingAreaLevelController;
 use App\Http\Controllers\API\Administration\ParkingController;
+use App\Http\Controllers\API\Proveedores\ProveedoresController; //****
+use App\Http\Controllers\API\Clientes\ClientesController;
+
+//RUTAS PARA PROVEEDORES
+Route::get('proveedores', [ProveedoresController::class, 'listaproveedores']); //****Alfonso
+Route::get('proveedorget/{codigo}', [ProveedoresController::class, 'Proveedor']);//Alfonsoooo
+Route::post('proveedoradd', [ProveedoresController::class, 'insertProveedor']); //****Alfonso
+Route::put('proveedorupdate/{codigo}', [ProveedoresController::class, 'updateProveedor']); //*Alfonsooo
+Route::delete('proveedordelete/{codigo}', [ProveedoresController::class, 'deleteProveedor']); //*Alfonsooo
+
+//RUTAS PARA CLIENTES
+Route::get('clientesget', [ClientesController::class, 'listaclientes']); //****Alfonso
+Route::get('clientesAll', [ClientesController::class, 'listaclientesAll']); //****Alfonso
+Route::get('clienteget/{codigo}', [ClientesController::class, 'cliente']); //****Alfonso
+Route::post('clienteadd', [ClientesController::class, 'insertCliente']); //****Alfonso
+Route::delete('deletecliente/{codigo}', [ClientesController::class, 'deleteCliente']); //*Alfonsooo
+Route::put('clienteupdate/{codigo}', [ClientesController::class, 'updateCliente']); //*Alfonsooo
 
 Route::prefix('employees')
 ->controller(EmployeeController::class)
