@@ -14,10 +14,9 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
-
 class ProveedoresController extends Controller
 {
-    //POST de cliente
+    //POST de proveedor
     public function store(Request $request)
     {
         // Validar los datos de entrada
@@ -27,6 +26,7 @@ class ProveedoresController extends Controller
             'nombre' => 'required|string|max:100',
             'nit' => 'required|string|max:50',
             'serie' => 'nullable|string|max:50',
+            'tipo_proveedor_id' => 'required|exists:tipo_proveedor,id',
         ]);
 
         if ($validator->fails()) {
@@ -37,72 +37,91 @@ class ProveedoresController extends Controller
         }
 
         // Crear un nuevo registro de proveedor
-        $Proveedores = Proveedor::create($request->all());
+        $proveedor = Proveedor::create($request->all());
 
         return response()->json([
             'message' => 'Proveedor creado exitosamente',
-            'data' => $Proveedores,
+            'data' => $proveedor,
         ], 201);
     }
 
     //Obtener todos los proveedores
     public function index()
     {
-        // Esto es para obtener todos los proveedores utilizando Eloquent ORM
-        $proveedores = Proveedor::all();
+        // Obtener todos los proveedores con la relación tipoProveedor
+        $proveedores = Proveedor::with('tipoProveedor')->get();
 
-        // Esto es para devolver la respuesta en formato JSON con un msj y los datos
+        // Devolver la respuesta en formato JSON con un mensaje y los datos
         return response()->json([
             'message' => 'Listado de todos los proveedores',
             'data' => $proveedores,
         ], 200);
     }
 
+    // Mostrar un proveedor específico
     public function show($id)
     {
-        $proveedores = Proveedor::find($id);
+        $proveedor = Proveedor::with('tipoProveedor')->find($id);
 
-        if (!$proveedores) {
+        if (!$proveedor) {
             return response()->json([
                 'message' => 'Proveedor no encontrado',
             ], 404);
         }
 
         return response()->json([
-            'message' => 'Detalles de este proveedor',
-            'data' => $proveedores,
+            'message' => 'Detalles del proveedor',
+            'data' => $proveedor,
         ], 200);
     }
 
+    // Actualizar un proveedor
     public function update(Request $request, $id)
     {
-        $proveedores = Proveedor::find($id);
+        $proveedor = Proveedor::find($id);
 
-        if (!$proveedores) {
+        if (!$proveedor) {
             return response()->json([
                 'message' => 'Proveedor no encontrado',
             ], 404);
         }
 
-        $proveedores->update($request->all());
+        $validator = Validator::make($request->all(), [
+            'codigo' => 'sometimes|required|string|max:50',
+            'nrc' => 'nullable|string|max:50',
+            'nombre' => 'sometimes|required|string|max:100',
+            'nit' => 'sometimes|required|string|max:50',
+            'serie' => 'nullable|string|max:50',
+            'tipo_proveedor_id' => 'sometimes|required|exists:tipo_proveedor,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Errores de validación',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $proveedor->update($request->all());
 
         return response()->json([
             'message' => 'Proveedor actualizado exitosamente',
-            'data' => $proveedores,
+            'data' => $proveedor,
         ], 200);
     }
 
+    // Eliminar un proveedor
     public function delete($id)
     {
-        $proveedores = Proveedor::find($id);
+        $proveedor = Proveedor::find($id);
 
-        if (!$proveedores) {
+        if (!$proveedor) {
             return response()->json([
                 'message' => 'Proveedor no encontrado',
             ], 404);
         }
 
-        $proveedores->delete();
+        $proveedor->delete();
 
         return response()->json([
             'message' => 'Proveedor eliminado exitosamente',

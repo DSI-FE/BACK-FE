@@ -29,6 +29,7 @@ class Proveedor extends Model
         'nombre',
         'nit',
         'serie',
+        'tipo_proveedor_id'  // Asegúrate de tener este campo en tu tabla
     ];
 
     public $hidden = [
@@ -37,11 +38,20 @@ class Proveedor extends Model
         'deleted_at',
     ];
 
-    // Opcional: Si necesitas castear algún atributo
-    protected $casts = [
-        // Por ejemplo, si 'nrc' se manejara como un array
-        // 'nrc' => 'array',
-    ];
+    // Definir relación con TipoProveedor
+    public function tipoProveedor()
+    {
+        return $this->belongsTo(TipoProveedor::class, 'tipo_proveedor_id');
+    }
+
+    // Atributo para obtener el nombre del tipo de proveedor
+    public function getTipoProveedorNombreAttribute()
+    {
+        return $this->tipoProveedor ? $this->tipoProveedor->tipo : null;
+    }
+
+    // Para hacer visible este atributo en el JSON
+    protected $appends = ['tipo_proveedor_nombre'];
 
     protected static $recordEvents = [
         'created',
@@ -56,10 +66,4 @@ class Proveedor extends Model
             ->logAll()
             ->logOnlyDirty();
     }
-
-    // Definir relaciones si existen
-    // public function relacion()
-    // {
-    //     return $this->belongsTo(RelacionModelo::class);
-    // }
 }
