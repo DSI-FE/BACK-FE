@@ -1,14 +1,12 @@
 {
     "name": "laravel/laravel",
     "type": "project",
-    "description": "The Laravel Framework.",
-    "keywords": ["framework", "laravel"],
-    "license": "MIT",
     "require": {
         "php": "^8.0.2",
         "cobisja/tad-php": "^0.4.2",
         "guzzlehttp/guzzle": "^7.2",
         "inertiajs/inertia-laravel": "^0.6.9",
+        "intervention/image": "^2.7",
         "laravel/framework": "^10.0",
         "laravel/passport": "^11.8.2",
         "laravel/sanctum": "^3.2",
@@ -40,9 +38,6 @@
     "autoload": {
         "files": [
             "app/Helpers/PaginationHelper.php"
-        ],
-        "classmap": [
-            "vendor/cobisja/tad-php"
         ],
         "psr-4": {
             "App\\": "app/",
