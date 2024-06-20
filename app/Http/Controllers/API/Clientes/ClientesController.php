@@ -18,6 +18,37 @@ use Illuminate\Validation\ValidationException;
 
 class ClientesController extends Controller
 {
+    //POST de cliente
+    public function store(Request $request)
+    {
+        // Validar los datos de entrada
+        $validator = Validator::make($request->all(), [
+            'codigo' => 'required|string|max:50',
+            'nombres' => 'required|string|max:100',
+            'apellidos' => 'required|string|max:100',
+            'numeroDocumento' => 'required|string|max:20',
+            'direccion' => 'nullable|string|max:255',
+            'nrc' => 'nullable|string|max:50',
+            'telefono' => 'nullable|string|max:20',
+            'correoElectronico' => 'nullable|string|email|max:100',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Errores de validación',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Crear un nuevo registro de cliente
+        $cliente = Cliente::create($request->all());
+
+        return response()->json([
+            'message' => 'Cliente creado exitosamente',
+            'data' => $cliente,
+        ], 201);
+    }
+
     //Obtener todos los clientes
     public function index()
     {
