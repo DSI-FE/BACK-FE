@@ -10,8 +10,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Cliente extends Model
 {
-    use HasFactory, SoftDeletes, LogsActivity;
-
     // Nombre de la tabla
     protected $table = 'cliente';
 
@@ -36,6 +34,7 @@ class Cliente extends Model
         'correoElectronico',
         'department_id',
         'municipality_id',
+        'economic_activity_id',
     ];
 
     public $hidden = [
@@ -44,11 +43,8 @@ class Cliente extends Model
         'deleted_at',
     ];
 
-    // Opcional por si necesitamos castear algún atributo
-    protected $casts = [
-        // Por ejemplo, si 'nrc' se manejara como un array
-        // 'nrc' => 'array',
-    ];
+    // Opcional: Si necesitas castear algún atributo
+    protected $casts = [];
 
     protected static $recordEvents = [
         'created',
@@ -75,6 +71,11 @@ class Cliente extends Model
         return $this->belongsTo('App\Models\Administration\Municipality', 'municipality_id');
     }
 
+    public function economicActivity()
+    {
+        return $this->belongsTo('App\Models\Clientes\ActividadEconomica', 'economic_activity_id');
+    }
+
     // Atributo para obtener el nombre del departamento
     public function getDepartmentNameAttribute()
     {
@@ -87,6 +88,12 @@ class Cliente extends Model
         return $this->municipality->name;
     }
 
+    // Atributo para obtener el nombre de la actividad económica
+    public function getEconomicActivityNameAttribute()
+    {
+        return $this->economicActivity->actividad;
+    }
+
     // Para hacer estos atributos visibles en el JSON
-    protected $appends = ['department_name', 'municipality_name'];
+    protected $appends = ['department_name', 'municipality_name', 'economic_activity_name'];
 }
