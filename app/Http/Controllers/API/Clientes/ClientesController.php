@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use App\Models\Clientes\Cliente;
 use Illuminate\Support\Facades\Auth;
-use App\Models\Clientes\ClientesModel;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -41,11 +40,11 @@ class ClientesController extends Controller
         }
 
         // Crear un nuevo registro de cliente
-        $cliente = Cliente::create($request->all());
+        $clientes = Cliente::create($request->all());
 
         return response()->json([
             'message' => 'Cliente creado exitosamente',
-            'data' => $cliente,
+            'data' => $clientes,
         ], 201);
     }
 
