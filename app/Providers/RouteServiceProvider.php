@@ -56,10 +56,10 @@ class RouteServiceProvider extends ServiceProvider
     public function map()
     {
         $this->mapApiRoutes();
-        $this->mapWebRoutes();
+        // $this->mapWebRoutes();
 
         $this->mapCustomApiRoutes();
-        $this->mapCustomWebRoutes();
+        // $this->mapCustomWebRoutes();
     }
 
     /**
@@ -85,7 +85,7 @@ class RouteServiceProvider extends ServiceProvider
         Route::middleware('auth:api')->namespace($this->namespace)->prefix('api/attendance')->group(base_path('routes/api/attendance.php'));
         Route::middleware('auth:api')->namespace($this->namespace)->prefix('api/institution')->group(base_path('routes/api/institution.php'));
         Route::middleware('auth:api')->namespace($this->namespace)->prefix('api/directory')->group(base_path('routes/api/directory.php'));
-
+        Route::middleware('auth:api')->namespace($this->namespace)->prefix('api/clientes')->group(base_path('routes/api/clientes.php'));
         
         Route::middleware(['api'])->namespace($this->namespace)->prefix('api/auth')->group(base_path('routes/api/auth.php'));
         Route::middleware('api')->namespace($this->namespace)->prefix('api/images')->group(base_path('routes/api/images.php'));
@@ -99,15 +99,15 @@ class RouteServiceProvider extends ServiceProvider
      *
      * @return void
      */
-    protected function mapWebRoutes()
-    {
-        Route::middleware('web')
-            ->namespace($this->namespace)
-            ->group(base_path('routes/web.php'));
-    }
+    // protected function mapWebRoutes()
+    // {
+    //     Route::middleware('web')
+    //         ->namespace($this->namespace)
+    //         ->group(base_path('routes/web.php'));
+    // }
 
-    protected function mapCustomWebRoutes()
-    {
-        Route::middleware('web')->namespace($this->namespace)->prefix('administracion')->group(base_path('routes/web/administracion.php'));
-    }
+    // protected function mapCustomWebRoutes()
+    // {
+    //     Route::middleware('web')->namespace($this->namespace)->prefix('administracion')->group(base_path('routes/web/administracion.php'));
+    // }
 }
