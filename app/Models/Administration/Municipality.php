@@ -43,4 +43,9 @@ class Municipality extends Model
     {
         return $this->belongsTo(Address::class, 'adm_address_id');
     }
+
+    public function clientes()
+    {
+        return $this->hasMany('App\Models\Clientes\Cliente', 'adm_municipality_id');
+    }
 }

@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Cliente extends Model
 {
+    use HasFactory, SoftDeletes, LogsActivity;
+
     // Nombre de la tabla
     protected $table = 'cliente';
 
@@ -32,6 +34,8 @@ class Cliente extends Model
         'nrc',
         'telefono',
         'correoElectronico',
+        'department_id',
+        'municipality_id',
     ];
 
     public $hidden = [
@@ -40,7 +44,7 @@ class Cliente extends Model
         'deleted_at',
     ];
 
-    // Opcional: Si necesitas castear algún atributo
+    // Opcional por si necesitamos castear algún atributo
     protected $casts = [
         // Por ejemplo, si 'nrc' se manejara como un array
         // 'nrc' => 'array',
@@ -60,9 +64,29 @@ class Cliente extends Model
             ->logOnlyDirty();
     }
 
-    // Definir relaciones si existen
-    // public function relacion()
-    // {
-    //     return $this->belongsTo(RelacionModelo::class);
-    // }
+    // Definir relaciones
+    public function department()
+    {
+        return $this->belongsTo('App\Models\Administration\Department', 'department_id');
+    }
+
+    public function municipality()
+    {
+        return $this->belongsTo('App\Models\Administration\Municipality', 'municipality_id');
+    }
+
+    // Atributo para obtener el nombre del departamento
+    public function getDepartmentNameAttribute()
+    {
+        return $this->department->name;
+    }
+
+    // Atributo para obtener el nombre del municipio
+    public function getMunicipalityNameAttribute()
+    {
+        return $this->municipality->name;
+    }
+
+    // Para hacer estos atributos visibles en el JSON
+    protected $appends = ['department_name', 'municipality_name'];
 }

@@ -14,47 +14,15 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
-
 class ClientesController extends Controller
 {
-    //POST de cliente
-    public function store(Request $request)
-    {
-        // Validar los datos de entrada
-        $validator = Validator::make($request->all(), [
-            'codigo' => 'required|string|max:50',
-            'nombres' => 'required|string|max:100',
-            'apellidos' => 'required|string|max:100',
-            'numeroDocumento' => 'required|string|max:20',
-            'direccion' => 'nullable|string|max:255',
-            'nrc' => 'nullable|string|max:50',
-            'telefono' => 'nullable|string|max:20',
-            'correoElectronico' => 'nullable|string|email|max:100',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Errores de validación',
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
-        // Crear un nuevo registro de cliente
-        $clientes = Cliente::create($request->all());
-
-        return response()->json([
-            'message' => 'Cliente creado exitosamente',
-            'data' => $clientes,
-        ], 201);
-    }
-
-    //Obtener todos los clientes
+    // Obtener todos los clientes
     public function index()
     {
-        // Esto es para obtener todos los clientes utilizando Eloquent ORM
-        $clientes = Cliente::all();
+        // Obtener todos los clientes junto con sus relaciones utilizando Eloquent ORM
+        $clientes = Cliente::with(['department', 'municipality'])->get();
 
-        // Esto es para devolver la respuesta en formato JSON con un msj y los datos
+        // Devolver la respuesta en formato JSON con un mensaje y los datos
         return response()->json([
             'message' => 'Listado de todos los clientes',
             'data' => $clientes,
@@ -63,9 +31,9 @@ class ClientesController extends Controller
 
     public function show($id)
     {
-        $clientes = Cliente::find($id);
+        $cliente = Cliente::with(['department', 'municipality'])->find($id);
 
-        if (!$clientes) {
+        if (!$cliente) {
             return response()->json([
                 'message' => 'Cliente no encontrado',
             ], 404);
@@ -73,42 +41,68 @@ class ClientesController extends Controller
 
         return response()->json([
             'message' => 'Detalles de este cliente',
-            'data' => $clientes,
+            'data' => $cliente,
         ], 200);
     }
 
     public function update(Request $request, $id)
     {
-        $clientes = Cliente::find($id);
+        $cliente = Cliente::find($id);
 
-        if (!$clientes) {
+        if (!$cliente) {
             return response()->json([
                 'message' => 'Cliente no encontrado',
             ], 404);
         }
 
-        $clientes->update($request->all());
+        $cliente->update($request->all());
 
         return response()->json([
             'message' => 'Cliente actualizado exitosamente',
-            'data' => $clientes,
+            'data' => $cliente,
         ], 200);
     }
 
     public function delete($id)
     {
-        $clientes = Cliente::find($id);
+        $cliente = Cliente::find($id);
 
-        if (!$clientes) {
+        if (!$cliente) {
             return response()->json([
                 'message' => 'Cliente no encontrado',
             ], 404);
         }
 
-        $clientes->delete();
+        $cliente->delete();
 
         return response()->json([
             'message' => 'Cliente eliminado exitosamente',
         ], 200);
+    }
+
+    // Crear un nuevo cliente
+    public function store(Request $request)
+    {
+        // Validar los datos de entrada
+        $validatedData = $request->validate([
+            'codigo' => 'required|string|max:50',
+            'nombres' => 'required|string|max:100',
+            'apellidos' => 'required|string|max:100',
+            'numeroDocumento' => 'required|string|max:20',
+            'direccion' => 'nullable|string|max:255',
+            'nrc' => 'nullable|string|max:50',
+            'telefono' => 'nullable|string|max:20',
+            'correoElectronico' => 'nullable|string|max:100',
+            'department_id' => 'required|exists:adm_departments,id',
+            'municipality_id' => 'required|exists:adm_municipalities,id',
+        ]);
+
+        // Crear el nuevo cliente
+        $cliente = Cliente::create($validatedData);
+
+        return response()->json([
+            'message' => 'Cliente creado exitosamente',
+            'data' => $cliente,
+        ], 201);
     }
 }

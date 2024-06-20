@@ -43,4 +43,9 @@ class Department extends Model
     {
         return $this->hasMany(Address::class);
     }
+    
+    public function clientes()
+    {
+        return $this->hasMany('App\Models\Clientes\Cliente', 'department_id');
+    }
 }
