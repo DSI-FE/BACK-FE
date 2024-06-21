@@ -86,22 +86,6 @@ class ProveedoresController extends Controller
             ], 404);
         }
 
-        $validator = Validator::make($request->all(), [
-            'codigo' => 'sometimes|required|string|max:50',
-            'nrc' => 'nullable|string|max:50',
-            'nombre' => 'sometimes|required|string|max:100',
-            'nit' => 'sometimes|required|string|max:50',
-            'serie' => 'nullable|string|max:50',
-            'tipo_proveedor_id' => 'sometimes|required|exists:tipo_proveedor,id',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Errores de validación',
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
         $proveedor->update($request->all());
 
         return response()->json([
@@ -109,6 +93,8 @@ class ProveedoresController extends Controller
             'data' => $proveedor,
         ], 200);
     }
+
+
 
     // Eliminar un proveedor
     public function delete($id)
