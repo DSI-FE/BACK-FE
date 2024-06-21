@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\PythonTestController;
+// use App\Http\Controllers\PythonTestController;
 use App\Http\Controllers\API\Attendance\StepController;
 use App\Http\Controllers\API\Attendance\HolidayController;
 use App\Http\Controllers\API\Attendance\MarkingController;
@@ -86,7 +86,7 @@ Route::get('active-schedules', 'App\Http\Controllers\API\Attendance\ScheduleCont
 
 Route::get('mark', 'App\Http\Controllers\API\Attendance\MarkingController@remoteMark');
 
-Route::get('python', [PythonTestController::class, 'index'])->name('python');
+// Route::get('python', [PythonTestController::class, 'index'])->name('python');
 
 Route::get('marks/{id?}', [MarkingController::class, 'getMarksFromDevices']);
 
