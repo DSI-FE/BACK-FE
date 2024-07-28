@@ -13,6 +13,7 @@ use App\Models\Proveedores\Proveedor;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Database\Eloquent\Builder;
 
 class ProveedoresController extends Controller
 {
@@ -45,17 +46,56 @@ class ProveedoresController extends Controller
         ], 201);
     }
 
-    //Obtener todos los proveedores
-    public function index()
+     //Obtener todos los proveedores con búsqueda, ordenamiento y paginación
+    public function index(Request $request)
     {
-        // Obtener todos los proveedores con la relación tipoProveedor
-        $proveedores = Proveedor::with('tipoProveedor')->get();
+        $rules = [
+            'search' => ['nullable', 'max:250'],
+            'perPage' => ['nullable', 'integer', 'min:1'],
+            'sort' => ['nullable'],
+            'sort.order' => ['nullable', Rule::in(['id', 'nombre', 'nit', 'codigo', 'nrc'])],
+            'sort.key' => ['nullable', Rule::in(['asc', 'desc'])],  
+        ];
 
-        // Devolver la respuesta en formato JSON con un mensaje y los datos
-        return response()->json([
-            'message' => 'Listado de todos los proveedores',
-            'data' => $proveedores,
-        ], 200);
+        $messages = [
+            'search.max' => 'El criterio de busqueda enviado excede la cantidad maxima permitida.',
+            'perPage.integer' => 'Solicitud de cantidad de registros por página con formato irreconocible.',
+            'perPage.min' => 'La cantidad de registros por página no puede ser menor a 1.',
+            'sort.order.in' => 'El valor de ordenamiento es inválido.',
+            'sort.key.in' => 'El valor de clave de ordenamiento es inválido.',
+        ];
+
+        $request->validate($rules, $messages);
+
+        $search = $request->input('search', '');
+        $perPage = $request->input('perPage', 5);
+
+        $sort = json_decode($request->input('sort'), true);
+        $orderBy = isset($sort['key']) && !empty($sort['order']) ? $sort['key'] : 'id';
+        $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
+
+        //Esto es para obtener todos los proveedores junto con sus relaciones utilizando Eloquent ORM
+        $proveedores = Proveedor::with('tipoProveedor')
+        ->where(function (Builder $query) use ($search) {
+            return $query->where('nombre', 'like', '%' . $search . '%')
+                ->orWhere('nit', 'like', '%' . $search . '%')
+                ->orWhere('codigo', 'like', '%' . $search . '%')
+                ->orWhere('nrc', 'like', '%' . $search . '%')
+                ->orWhere('serie', 'like', '%' . $search . '%');
+                
+        })
+        ->orderBy($orderBy, $orderDirection)
+        ->paginate($perPage);
+
+        // Esto es para devolver la respuesta en formato JSON con un mensaje y los datos
+        $response = $proveedores->toArray();
+        $response['search'] = $request->query('search', '');
+        $response['sort'] = [
+            'orderBy' => $orderBy,
+            'orderDirection' => $orderDirection,
+        ];
+
+        return response()->json($response, 200);
     }
 
     // Mostrar un proveedor específico
