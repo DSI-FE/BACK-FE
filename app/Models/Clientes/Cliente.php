@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models\Clientes;
 
 use Spatie\Activitylog\LogOptions;

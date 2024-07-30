@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers\API\Clientes;
 
 use Exception;
@@ -14,20 +13,60 @@ use Illuminate\Support\Facades\Auth;
 use App\Models\Clientes\ClientesModel;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use App\Helpers\StringsHelper;
+use Illuminate\Database\Eloquent\Builder;
 
 class ClientesController extends Controller
 {
     // Obtener todos los clientes
-    public function index()
+    public function index(Request $request)
     {
+        $rules = [
+            'search' => ['nullable', 'max:250'],
+            'perPage' => ['nullable', 'integer', 'min:1'],
+            'sort' => ['nullable'],
+            'sort.order' => ['nullable', Rule::in(['id', 'name', 'lastname', 'email'])],
+            'sort.key' => ['nullable', Rule::in(['asc', 'desc'])],
+        ];
+
+        $messages = [
+            'search.max' => 'El criterio de búsqueda enviado excede la cantidad máxima permitida.',
+            'perPage.integer' => 'Solicitud de cantidad de registros por página con formato irreconocible.',
+            'perPage.min' => 'La cantidad de registros por página no puede ser menor a 1.',
+            'sort.order.in' => 'El valor de ordenamiento es inválido.',
+            'sort.key.in' => 'El valor de clave de ordenamiento es inválido.',
+        ];
+
+        $request->validate($rules, $messages);
+
+        $search = StringsHelper::normalizarTexto($request->query('search', ''));
+        $perPage = $request->query('perPage', 5);
+
+        $sort = json_decode($request->input('sort'), true);
+        $orderBy = isset($sort['key']) && !empty($sort['key']) ? $sort['key'] : 'id';
+        $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
+
         // Esto es para obtener todos los clientes junto con sus relaciones utilizando Eloquent ORM
-        $clientes = Cliente::with(['department', 'municipality', 'economicActivity'])->get();
+        $clientes = Cliente::with(['department', 'municipality', 'economicActivity'])
+        ->where(function (Builder $query) use ($search) {
+            return $query->where('cliente.nombres', 'like', '%' . $search . '%')
+            ->orWhere('cliente.apellidos', 'like', '%' . $search . '%')
+            ->orWhere('cliente.correoElectronico', 'like', '%' . $search . '%')
+            ->orWhere('cliente.direccion', 'like', '%' . $search . '%')
+            ->orWhere('cliente.telefono', 'like', '%' . $search . '%');
+        })
+        ->orderBy($orderBy, $orderDirection)
+        ->paginate($perPage);
 
         // Esto es para devolver la respuesta en formato JSON con un mensaje y los datos
-        return response()->json([
-            'message' => 'Listado de todos los clientes',
-            'data' => $clientes,
-        ], 200);
+        $response = $clientes->toArray();
+        $response['search'] = $request->query('search', '');
+        $response['sort'] = [
+            'orderBy' => $orderBy,
+            'orderDirection' => $orderDirection
+        ];
+
+        return response()->json($response, 200);
     }
 
     public function show($id)
