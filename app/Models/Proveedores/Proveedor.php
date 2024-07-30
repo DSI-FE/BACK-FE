@@ -66,4 +66,10 @@ class Proveedor extends Model
             ->logAll()
             ->logOnlyDirty();
     }
+
+    // Definir relaciones con la compra
+    public function proveedores()
+    {
+        return $this->hasMany('App\Models\Proveedores\Proveedor', 'proveedor_id');
+    }
 }
