@@ -617,8 +617,8 @@ class EmployeeController extends Controller
                 }
 
                 // Notificación que se ha creado un nuevo Colaborador
-                $notifyTo = [78, 186]; // 22 - René, 78 = Juan, 167 = Rodolfo, 186 = Jonathan
-                SendNewEmployeeNotificationJob::dispatch($notifyTo, $newEmployee->id);
+                // $notifyTo = [78, 186]; // 22 - René, 78 = Juan, 167 = Rodolfo, 186 = Jonathan
+                // SendNewEmployeeNotificationJob::dispatch($notifyTo, $newEmployee->id);
             });
 
             return response()->json($newEmployee, 200);
