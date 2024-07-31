@@ -106,7 +106,7 @@ class InventarioController extends Controller
 
 
     //Obtener los productos por codigo para registar compra
-    public function show($codigo)
+   /* public function show($codigo)
     {
         // Obtener inventarios por código de producto
         $inventarios = Inventario::with(['producto', 'unidad'])
@@ -133,6 +133,37 @@ class InventarioController extends Controller
         return response()->json([
             'message' => 'Producto con sus unidades de medida',
             'data' => $response
+        ], 200);
+    }*/
+
+    public function show($codigo)
+    {
+        // Obtener inventarios por código de producto
+        $inventarios = Inventario::with(['producto', 'unidad'])
+            ->where('producto_id', $codigo)
+            ->get();
+
+        if ($inventarios->isEmpty()) {
+            return response()->json([
+                'message' => 'Producto no encontrado',
+                'data' => []
+            ], 404);
+        }
+
+         // Seleccionar solo los campos deseados
+    $filteredInventarios = $inventarios->map(function ($inventario) {
+        return [
+            'id' => $inventario->id,
+            'producto_id' => $inventario->producto_id,
+            'nombre_producto' => $inventario->producto->nombreProducto,
+            'unidad_medida_id' => $inventario->unidad_medida_id,
+            'nombre_unidad_medida' => $inventario->unidad->nombreUnidad,
+        ];
+    });
+
+        return response()->json([
+            'message' => 'Producto con sus unidades de medida',
+            'data' => $filteredInventarios
         ], 200);
     }
 
@@ -202,6 +233,34 @@ class InventarioController extends Controller
     return response()->json([
         'message' => 'Resumen de inventario',
         'data' => $result,
+    ], 200);
+}
+
+public function delete($producto_id, $unidad_medida_id)
+{
+    // Buscar el inventario por producto_id y unidad_medida_id
+    $inventario = Inventario::where('producto_id', $producto_id)
+                            ->where('unidad_medida_id', $unidad_medida_id)
+                            ->first();
+
+    if (!$inventario) {
+        return response()->json([
+            'message' => 'Producto con la unidad de medida especificada no encontrado',
+        ], 404);
+    }
+
+      // Verificar si la cantidad en inventario es mayor a 0
+      if ($inventario->existencias > 0) {
+        return response()->json([
+            'message' => 'No se puede eliminar el producto porque aún hay existencias',
+        ], 400); // Código de estado 400
+    }
+
+    // Eliminar el inventario
+    $inventario->delete();
+
+    return response()->json([
+        'message' => 'Producto con la unidad de medida especificada eliminado exitosamente',
     ], 200);
 }
 

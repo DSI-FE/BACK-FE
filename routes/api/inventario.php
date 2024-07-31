@@ -11,5 +11,5 @@ Route::get('/productoByCod/{codigo}', [InventarioController::class, 'show']);
 Route::patch('/inventarioUpd/{id}/{unidad_medida_id}', [InventarioController::class, 'update']); 
 Route::get('/sumaCosto', [InventarioController::class, 'sumaInventario']);
 //sin usar
-Route::delete ('/productodel', [InventarioController::class, 'delete']);
+Route::delete ('/inventariodel/{id}/{unidad}', [InventarioController::class, 'delete']);
 
