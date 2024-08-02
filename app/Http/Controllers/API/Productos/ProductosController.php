@@ -21,7 +21,7 @@ class ProductosController extends Controller
            ], 200);
        }
 
-       //Obtener todos los productos
+       //Obtener todos las unidades de medida
        public function show()
        {
            // Obtener todos los productos

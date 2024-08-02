@@ -8,7 +8,8 @@ Route::prefix('addinventario')->group(function () {
 });
 Route::get('/inventario', [InventarioController::class, 'index']);
 Route::get('/productoByCod/{codigo}', [InventarioController::class, 'show']);
-Route::patch('/inventarioUpd/{id}/{unidad_medida_id}', [InventarioController::class, 'update']); 
+Route::patch('/inventarioUpd/{id}', [InventarioController::class, 'update']); 
+Route::get('/productoBy/{id}', [InventarioController::class, 'codigo']); 
 Route::get('/sumaCosto', [InventarioController::class, 'sumaInventario']);
 //sin usar
 Route::delete ('/inventariodel/{id}/{unidad}', [InventarioController::class, 'delete']);
