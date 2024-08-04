@@ -164,6 +164,9 @@ class InventarioController extends Controller
             'unidad_medida' => $inventario->unidad_medida_id,
             'nombre_unidad_medida' => $inventario->unidad->nombreUnidad,
             'equivalencia' =>$inventario->equivalencia,
+            'existencias' => $inventario->existencias,
+            'precioCosto' => $inventario->precioCosto,
+            'precioVenta' => $inventario->precioVenta
         ];
     });
 
