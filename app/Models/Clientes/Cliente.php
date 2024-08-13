@@ -95,4 +95,10 @@ class Cliente extends Model
 
     // Para hacer estos atributos visibles en el JSON
     protected $appends = ['department_name', 'municipality_name', 'economic_activity_name'];
+
+     //Hacer referencia a la venta
+     public function ventas()
+     {
+         return $this->hasMany('App\Models\Ventas\Venta', 'id_cliente');
+     }
 }

@@ -85,4 +85,10 @@ class Inventario extends Model
      {
          return $this->hasMany('App\Models\Compras\DetalleCompra', 'producto_id');
      }
+
+     // Definir relaciones con detale de ventas
+     public function venta()
+     {
+         return $this->hasMany('App\Models\Ventas\DetalleVenta', 'producto_id');
+     }
 }
