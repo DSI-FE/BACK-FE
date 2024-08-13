@@ -5,3 +5,4 @@ use App\Http\Controllers\API\Productos\ProductosController;
 
 
 Route::get('/productos', [ProductosController::class, 'index']);
+Route::get('/unidades', [ProductosController::class, 'show']);

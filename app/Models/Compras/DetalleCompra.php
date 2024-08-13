@@ -2,7 +2,6 @@
 namespace App\Models\Compras;
 
 use App\Models\Productos\Producto;
-use App\Models\Inventarios\Inventario;
 use App\Models\Productos\UnidadMedida;
 use Spatie\Activitylog\LogOptions;
 use Illuminate\Database\Eloquent\Model;
@@ -66,7 +65,7 @@ class DetalleCompra extends Model
      //definir relacion con el producto
      public function producto()
      {
-        return $this->belongsTo(Inventario::class, 'producto_id');
+        return $this->belongsTo(Producto::class, 'producto_id');
      }
 
      //Definir relacion con la unidad de medida
@@ -77,7 +76,7 @@ class DetalleCompra extends Model
 
  
      // Atributo para obtener el nombre del tipo de proveedor
-     public function getIdCompraAttribute()
+     public function getNumeroCcfAttribute()
      {
          return $this->compra ? $this->compra->numeroCCF : null;
      }
@@ -85,7 +84,7 @@ class DetalleCompra extends Model
      // Atributo para obtener el nombre del producto
      public function getIdProductoAttribute()
      {
-         return $this->producto ? $this->producto->producto_id : null;
+         return $this->producto ? $this->producto->id : null;
      }
 
      // Atributo para obtener el nombre del producto
@@ -96,6 +95,6 @@ class DetalleCompra extends Model
  
  
      // Para hacer visible este atributo en el JSON
-     protected $appends = ['id_compra', 'id_producto', 'unidad_medida'];
+     protected $appends = ['numero_ccf', 'id_producto', 'unidad_medida'];
 
 }

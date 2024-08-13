@@ -1,18 +1,21 @@
 <?php
-namespace App\Models\Productos;
+namespace App\Models\Ventas;
 
+use App\Models\Inventarios\Inventario;
 use Spatie\Activitylog\LogOptions;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\Productos\Producto;
+use App\Models\Productos\UnidadMedida;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class Producto extends Model
+class DetalleVenta extends Model
 {
     use HasFactory, SoftDeletes;
 
     // Nombre de la tabla
-    protected $table = 'productos';
+    protected $table = 'detalle_venta';
 
     // Clave primaria de la tabla
     protected $primaryKey = 'id';
@@ -25,7 +28,12 @@ class Producto extends Model
 
     // Campos que se pueden asignar de forma masiva
     protected $fillable = [
-        'nombreProducto'
+        'cantidad',
+        'precio',
+        'iva',
+        'total',
+        'venta_id',
+        'producto_id'
     ];
 
     public $hidden = [
@@ -34,11 +42,20 @@ class Producto extends Model
         'deleted_at',
     ];
 
-    // Definir relaciones con el inventario
-    public function inventario()
+    //Definir la relacion con la Venta
+    public function ventas()
     {
-        return $this->hasMany('App\Models\Inventarios\Inventario', 'producto_id');
+        return $this->belongsTo(Venta::class, 'venta_id');
     }
-    
+
+    //Deifinir la relacion con producto
+    public function producto()
+    {
+        return $this->belongsTo(Inventario::class, 'producto_id');
+    }
+
+
+ 
+
 
 }

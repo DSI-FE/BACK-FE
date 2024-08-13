@@ -76,84 +76,118 @@ class ComprasController extends Controller
     }
 
 
+//Agregar compra
+public function store(Request $request)
+{
+    // Validación de los campos de entrada
+    $validator = Validator::make($request->all(), [
+        'fecha' => 'required',
+        'numeroCCF' => 'required',
+        'ivaCompra' => 'required',
+        'totalCompra' => 'required',
+        'proveedor_id' => 'required',
+        'comprasExentas' => 'required',
+        'comprasGravadas' => 'required',
+    ]);
 
+    if ($validator->fails()) {
+        return response()->json([
+            'message' => 'Errores de validación',
+            'errors' => $validator->errors(),
+        ], 422);
+    }
 
-    //Agregar compra
-    public function store(Request $request)
-    {
+    // Verificar si ya existe una compra con el mismo numeroCCF
+    $compraExistente = Compra::where('numeroCCF', $request->numeroCCF)->first();
+    if ($compraExistente) {
+        return response()->json([
+            'message' => 'La compra con este numeroCCF ya ha sido registrada',
+            'compra' => $compraExistente
+        ], 409); // 409 Conflict
+    }
 
-        //Validacion de los campos de entrada
-        $validator = Validator::make($request->all(), [
-            'fecha' => 'required',
-            'numeroCCF' => 'required',
-            'ivaCompra' => 'required',
-            'totalCompra' => 'required',
-            'proveedor_id' => 'required',
-            'comprasExentas' => 'required',
-            'comprasGravadas' => 'required',
+    // Empezar una transacción
+    DB::beginTransaction();
+    try {
+        // Crear la compra
+        $compra = Compra::create([
+            'fecha' => $request->fecha,
+            'numeroCCF' => $request->numeroCCF,
+            'comprasExentas' => $request->comprasExentas,
+            'comprasGravadas' => $request->comprasGravadas,
+            'ivaCompra' => $request->ivaCompra,
+            'ivaPercibido' => $request->ivaPercibido,
+            'totalCompra' => $request->totalCompra,
+            'proveedor_id' => $request->proveedor_id
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Errores de validación',
-                'errors' => $validator->errors(),
-            ], 422);
-        }
+        $detallesCompra = [];
 
-        // Empezar una transaccion
-        DB::beginTransaction();
-        try {
-            // Crear o encontrar la compra
-            $compra = Compra::firstOrCreate([
-                'fecha' => $request->fecha,
-                'numeroCCF' => $request->numeroCCF,
-                'comprasExentas' => $request->comprasExentas,
-                'comprasGravadas' => $request->comprasGravadas,
-                'ivaCompra' => $request->ivaCompra,
-                'ivaPercibido' => $request->ivaPercibido,
-                'totalCompra' => $request->totalCompra,
-                'proveedor_id' => $request->proveedor_id
-            ]);
-
-            $producto = Inventario::where(['producto_id' => $request->producto_id])->first();
-            $unidadMedida = UnidadMedida::where(['id' => $request->unidad_medida_id])->first();
-
-
-            // Crear el registro de detalle de compra
-            $detalleCompra =  DetalleCompra::create([
+        // Iterar sobre los productos y crear los registros de detalle de compra
+        foreach ($request->productos as $producto) {
+            $detalleCompra = DetalleCompra::create([
                 'compra_id' => $compra->id,
-                'producto_id' => $producto->id,
-                'unidad_medida_id' => $unidadMedida->id,
-                'costo' => $request->costo,
-                'iva' => $request->iva,
-                'total' => $request->total,
-                'cantidad' => $request->cantidad
+                'producto_id' => $producto['producto_id'],
+                'unidad_medida_id' => $producto['unidad_medida_id'],
+                'costo' => $producto['costo'],
+                'ivaCompra' => $producto['iva'],
+                'total' => $producto['total'],
+                'cantidad' => $producto['cantidad']
             ]);
 
-            //Incrementar los productos en existencias
-            $productoAct = Inventario::where(['producto_id' => $request->producto_id])->get();
-            // Iterar sobre cada producto y actualizar las existencias
-            foreach ($productoAct as $prod) {
-                $prod->existencias += ($detalleCompra->cantidad * $prod->equivalencia);
-                $prod->save();
+            // Obtener el inventario de la unidad de medida seleccionada
+            $unidadSeleccionada = Inventario::where('producto_id', $producto['producto_id'])
+                ->where('unidad_medida_id', $producto['unidad_medida_id'])
+                ->first();
+
+            if ($unidadSeleccionada) {
+                // Aumentar las existencias de la unidad de medida seleccionada
+                $unidadSeleccionada->existencias += $detalleCompra->cantidad;
+                $unidadSeleccionada->save();
+
+                // Actualizar las existencias de otras unidades de medida del mismo producto
+                $unidadesProducto = Inventario::where('producto_id', $producto['producto_id'])->get();
+                foreach ($unidadesProducto as $unidad) {
+                    if ($unidad->unidad_medida_id != $unidadSeleccionada->unidad_medida_id) {
+                        if ($unidadSeleccionada->equivalencia > 1) {
+                            $unidad->existencias = $unidadSeleccionada->existencias / $unidadSeleccionada->equivalencia * $unidad->equivalencia;
+                        } else {
+                            $unidad->existencias = $unidadSeleccionada->existencias * $unidad->equivalencia;
+                        }
+                        $unidad->save();
+                    }
+                }
+
+                $detallesCompra[] = $detalleCompra;
+            } else {
+                // Revertir la transacción en caso de error
+                DB::rollback();
+                return response()->json([
+                    'message' => 'Error: No se encontró el inventario para el producto y unidad de medida proporcionados.',
+                    'producto_id' => $producto['producto_id'],
+                    'unidad_medida_id' => $producto['unidad_medida_id']
+                ], 400);
             }
-            
-
-
-            // Confirmar la transacción
-            DB::commit();
-
-            return response()->json([
-                'message' => 'Compra registrada exitosamente',
-                'compra' => $detalleCompra
-            ], 201);
-        } catch (\Exception $e) {
-            // Revertir la transacción en caso de error
-            DB::rollback();
-            return response()->json([
-                'message' => 'Error al registrar la compra',
-                'error' => $e->getMessage(),
-            ], 500);
         }
+
+        // Confirmar la transacción
+        DB::commit();
+
+        return response()->json([
+            'message' => 'Compra registrada exitosamente',
+            'compra' => $compra,
+            'detalles' => $detallesCompra
+        ], 201);
+    } catch (\Exception $e) {
+        // Revertir la transacción en caso de error
+        DB::rollback();
+        return response()->json([
+            'message' => 'Error al registrar la compra',
+            'error' => $e->getMessage(),
+        ], 500);
     }
+}
+
+
+    
 }
