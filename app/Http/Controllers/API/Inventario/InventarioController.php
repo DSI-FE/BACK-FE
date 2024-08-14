@@ -62,7 +62,7 @@ class InventarioController extends Controller
         return response()->json($response, 200);
     }
 
-    //Aqui se el insert al inventario y a la vez el producto
+    //Aqui se hace el insert al inventario y a la vez el producto
     public function store(Request $request)
     {
         // Validar los datos de entrada
@@ -164,9 +164,15 @@ class InventarioController extends Controller
             'unidad_medida' => $inventario->unidad_medida_id,
             'nombre_unidad_medida' => $inventario->unidad->nombreUnidad,
             'equivalencia' =>$inventario->equivalencia,
+<<<<<<< HEAD
             'existencias' => $inventario->existencias,
             'precioCosto' => $inventario->precioCosto,
             'precioVenta' => $inventario->precioVenta
+=======
+            'existencias' =>$inventario->existencias,
+            'precioCosto' =>$inventario->precioCosto,
+            'precioVenta' =>$inventario->precioVenta
+>>>>>>> 6a43a48a7336969c2ebcfbd3f6b1c38f741eec64
         ];
     });
 
@@ -280,18 +286,10 @@ class InventarioController extends Controller
     ], 200);
 }
 
-public function delete($producto_id, $unidad_medida_id)
+public function delete($id)
 {
     // Buscar el inventario por producto_id y unidad_medida_id
-    $inventario = Inventario::where('producto_id', $producto_id)
-                            ->where('unidad_medida_id', $unidad_medida_id)
-                            ->first();
-
-    if (!$inventario) {
-        return response()->json([
-            'message' => 'Producto con la unidad de medida especificada no encontrado',
-        ], 404);
-    }
+    $inventario = Inventario::where('id', $id)->first();
 
       // Verificar si la cantidad en inventario es mayor a 0
       if ($inventario->existencias > 0) {
