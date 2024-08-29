@@ -56,128 +56,276 @@ class VentasController extends Controller
         ], 200);
     }
 
- // Agregar una venta nueva
-public function store(Request $request)
-{
-    // Validación de los campos de entrada
-    $validator = Validator::make($request->all(), [
-        'total_no_sujetas' => 'required',
-        'total_exentas' => 'required',
-        'total_gravadas' => 'required',
-        'total_iva' => 'required',
-        'total_pagar' => 'required',
-        'condicion' => 'required',
-        'tipo_documento' => 'required',
-        'cliente_id' => 'required',
-        'productos' => 'required|array',
-        'productos.*.cantidad' => 'required',
-        'productos.*.precio' => 'required',
-        'productos.*.iva' => 'required',
-        'productos.*.total' => 'required',
-        'productos.*.producto_id' => 'required',
-        'productos.*.unidad_medida_id' => 'required'
-    ]);
-
-    if ($validator->fails()) {
-        return response()->json([
-            'message' => 'Errores de validación',
-            'errors' => $validator->errors(),
-        ], 422);
-    }
-
-    // Empezar una transacción
-    DB::beginTransaction();
-    try {
-        // Crear la compra
-        $venta = Venta::create([
-            'total_no_sujetas' => $request->total_no_sujetas,
-            'total_exentas' => $request->total_exentas,
-            'total_gravadas' => $request->total_gravadas,
-            'total_iva' => $request->total_iva,
-            'total_pagar' => $request->total_pagar,
-            'estado' => 'Pendiente',
-            'condicion' => $request->condicion,
-            'tipo_documento' => $request->tipo_documento,
-            'cliente_id' => $request->cliente_id,
+    // Agregar una venta nueva
+    public function store(Request $request)
+    {
+        // Validación de los campos de entrada
+        $validator = Validator::make($request->all(), [
+            'total_no_sujetas' => 'required',
+            'total_exentas' => 'required',
+            'total_gravadas' => 'required',
+            'total_iva' => 'required',
+            'total_pagar' => 'required',
+            'condicion' => 'required',
+            'tipo_documento' => 'required',
+            'cliente_id' => 'required',
+            'productos' => 'required|array',
+            'productos.*.cantidad' => 'required',
+            'productos.*.precio' => 'required',
+            'productos.*.iva' => 'required',
+            'productos.*.total' => 'required',
+            'productos.*.producto_id' => 'required',
+            'productos.*.unidad_medida_id' => 'required'
         ]);
 
-        $detalleVentas = [];
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Errores de validación',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
-        // Iterar sobre los productos y crear los registros de detalle de compra
-        foreach ($request->productos as $producto) {
-            // Obtener el inventario de la unidad de medida seleccionada
-            $unidadSeleccionada = Inventario::where('producto_id', $producto['producto_id'])
-                ->where('unidad_medida_id', $producto['unidad_medida_id'])
-                ->first();
+        // Empezar una transacción
+        DB::beginTransaction();
+        try {
+            // Crear la compra
+            $venta = Venta::create([
+                'total_no_sujetas' => $request->total_no_sujetas,
+                'total_exentas' => $request->total_exentas,
+                'total_gravadas' => $request->total_gravadas,
+                'total_iva' => $request->total_iva,
+                'total_pagar' => $request->total_pagar,
+                'estado' => 'Pendiente',
+                'condicion' => $request->condicion,
+                'tipo_documento' => $request->tipo_documento,
+                'cliente_id' => $request->cliente_id,
+            ]);
 
-            if ($unidadSeleccionada) {
-                // Verificar si la cantidad es mayor que las existencias
-                if ($producto['cantidad'] > $unidadSeleccionada->existencias) {
+            $detalleVentas = [];
+
+            // Iterar sobre los productos y crear los registros de detalle de compra
+            foreach ($request->productos as $producto) {
+                // Obtener el inventario de la unidad de medida seleccionada
+                $unidadSeleccionada = Inventario::where('producto_id', $producto['producto_id'])
+                    ->where('unidad_medida_id', $producto['unidad_medida_id'])
+                    ->first();
+
+                if ($unidadSeleccionada) {
+                    // Verificar si la cantidad es mayor que las existencias
+                    if ($producto['cantidad'] > $unidadSeleccionada->existencias) {
+                        // Revertir la transacción en caso de error
+                        DB::rollback();
+                        return response()->json([
+                            'message' => 'Error: La cantidad solicitada excede las existencias disponibles.',
+                            'producto_id' => $producto['producto_id'],
+                            'unidad_medida_id' => $producto['unidad_medida_id'],
+                            'existencias_disponibles' => $unidadSeleccionada->existencias,
+                            'cantidad_solicitada' => $producto['cantidad']
+                        ], 400);
+                    }
+
+                    $detalleVenta = DetalleVenta::create([
+                        'cantidad' => $producto['cantidad'],
+                        'precio' => $producto['precio'],
+                        'iva' => $producto['iva'],
+                        'total' => $producto['total'],
+                        'venta_id' => $venta->id,
+                        'producto_id' => $producto['id']
+                    ]);
+
+                    // Disminuir las existencias de la unidad de medida seleccionada
+                    $unidadSeleccionada->existencias -= $detalleVenta->cantidad;
+                    $unidadSeleccionada->save();
+
+                    // Actualizar las existencias de otras unidades de medida del mismo producto
+                    $unidadesProducto = Inventario::where('producto_id', $producto['producto_id'])->get();
+                    foreach ($unidadesProducto as $unidad) {
+                        if ($unidad->unidad_medida_id != $unidadSeleccionada->unidad_medida_id) {
+                            if ($unidadSeleccionada->equivalencia > 1) {
+                                $unidad->existencias = $unidadSeleccionada->existencias / $unidadSeleccionada->equivalencia * $unidad->equivalencia;
+                            } else {
+                                $unidad->existencias = $unidadSeleccionada->existencias * $unidad->equivalencia;
+                            }
+                            $unidad->save();
+                        }
+                    }
+
+                    $detalleVentas[] = $detalleVenta;
+                } else {
                     // Revertir la transacción en caso de error
                     DB::rollback();
                     return response()->json([
-                        'message' => 'Error: La cantidad solicitada excede las existencias disponibles.',
+                        'message' => 'Error: No se encontró el inventario para el producto y unidad de medida proporcionados.',
                         'producto_id' => $producto['producto_id'],
-                        'unidad_medida_id' => $producto['unidad_medida_id'],
-                        'existencias_disponibles' => $unidadSeleccionada->existencias,
-                        'cantidad_solicitada' => $producto['cantidad']
+                        'unidad_medida_id' => $producto['unidad_medida_id']
                     ], 400);
                 }
+            }
 
+            // Confirmar la transacción
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Venta registrada exitosamente',
+                'venta' => $venta,
+                'detalles' => $detalleVentas
+            ], 201);
+        } catch (\Exception $e) {
+            // Revertir la transacción en caso de error
+            DB::rollback();
+            return response()->json([
+                'message' => 'Error al registrar la venta',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function update(Request $request, $id)
+    {
+        // Validación de los campos de entrada
+        $validator = Validator::make($request->all(), [
+            'total_no_sujetas' => 'required',
+            'total_exentas' => 'required',
+            'total_gravadas' => 'required',
+            'total_iva' => 'required',
+            'total_pagar' => 'required',
+            'condicion' => 'required',
+            'tipo_documento' => 'required',
+            'cliente_id' => 'required',
+            'productos' => 'required|array',
+            'productos.*.cantidad' => 'required',
+            'productos.*.precio' => 'required',
+            'productos.*.iva' => 'required',
+            'productos.*.total' => 'required',
+            'productos.*.producto_id' => 'required',
+            'productos.*.unidad_medida_id' => 'required', // Añadido para validar unidad_medida_id
+        ]);
+    
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Errores de validación',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+    
+        DB::beginTransaction();
+        try {
+            // Obtener la venta a actualizar
+            $venta = Venta::find($id);
+            if (!$venta) {
+                return response()->json([
+                    'message' => 'La venta no fue encontrada'
+                ], 404);
+            }
+
+            if($venta->estado == "Finalizada"){
+                return response()->json([
+                    'message' => 'Esta venta no se puede modificar porque ya fue facturada'
+                ], 404);
+            }
+    
+            // Actualizar los datos de la venta
+            $venta->update([
+                'total_no_sujetas' => $request->total_no_sujetas,
+                'total_exentas' => $request->total_exentas,
+                'total_gravadas' => $request->total_gravadas,
+                'total_iva' => $request->total_iva,
+                'total_pagar' => $request->total_pagar,
+                'condicion' => $request->condicion,
+                'tipo_documento' => $request->tipo_documento,
+                'cliente_id' => $request->cliente_id,
+            ]);
+    
+            // Eliminar los detalles de venta existentes
+            DetalleVenta::where('venta_id', $venta->id)->delete();
+    
+            $detalleVentas = [];
+            foreach ($request->productos as $producto) {
+                // Buscar el ID de inventario basado en producto_id y unidad_medida_id
+                $inventario = Inventario::where('producto_id', $producto['producto_id'])
+                    ->where('unidad_medida_id', $producto['unidad_medida_id'])
+                    ->first();
+    
+                if (!$inventario) {
+                    // Manejar el caso en que no se encuentra el inventario
+                    DB::rollback();
+                    return response()->json([
+                        'message' => 'Inventario no encontrado para el producto y unidad de medida proporcionados',
+                    ], 404);
+                }
+    
+                // Crear el detalle de venta
                 $detalleVenta = DetalleVenta::create([
                     'cantidad' => $producto['cantidad'],
                     'precio' => $producto['precio'],
                     'iva' => $producto['iva'],
                     'total' => $producto['total'],
                     'venta_id' => $venta->id,
-                    'producto_id' => $producto['id']
+                    'producto_id' => $inventario->id 
                 ]);
-
-                // Disminuir las existencias de la unidad de medida seleccionada
-                $unidadSeleccionada->existencias -= $detalleVenta->cantidad;
-                $unidadSeleccionada->save();
-
-                // Actualizar las existencias de otras unidades de medida del mismo producto
-                $unidadesProducto = Inventario::where('producto_id', $producto['producto_id'])->get();
-                foreach ($unidadesProducto as $unidad) {
-                    if ($unidad->unidad_medida_id != $unidadSeleccionada->unidad_medida_id) {
-                        if ($unidadSeleccionada->equivalencia > 1) {
-                            $unidad->existencias = $unidadSeleccionada->existencias / $unidadSeleccionada->equivalencia * $unidad->equivalencia;
-                        } else {
-                            $unidad->existencias = $unidadSeleccionada->existencias * $unidad->equivalencia;
-                        }
-                        $unidad->save();
-                    }
-                }
-
+    
                 $detalleVentas[] = $detalleVenta;
-            } else {
-                // Revertir la transacción en caso de error
-                DB::rollback();
-                return response()->json([
-                    'message' => 'Error: No se encontró el inventario para el producto y unidad de medida proporcionados.',
-                    'producto_id' => $producto['producto_id'],
-                    'unidad_medida_id' => $producto['unidad_medida_id']
-                ], 400);
             }
+    
+            // Confirmar la transacción
+            DB::commit();
+    
+            return response()->json([
+                'message' => 'Venta actualizada exitosamente',
+                'venta' => $venta,
+                'detalles' => $detalleVentas
+            ], 200);
+        } catch (\Exception $e) {
+            // Revertir la transacción en caso de error
+            DB::rollback();
+            return response()->json([
+                'message' => 'Error al actualizar la venta',
+                'error' => $e->getMessage(),
+            ], 500);
         }
+    }
+
+//Funcion para eliminar una venta
+    public function delete($id)
+{
+    DB::beginTransaction();
+    try {
+        // Obtener la venta a eliminar
+        $venta = Venta::find($id);
+        if (!$venta) {
+            return response()->json([
+                'message' => 'La venta no fue encontrada'
+            ], 404);
+        }
+
+        // Eliminar los detalles de venta asociados
+        DetalleVenta::where('venta_id', $venta->id)->delete();
+
+        if($venta->estado == "Finalizada"){
+            return response()->json([
+                'message' => 'Esta venta no se puede eliminar porque ya fue facturada'
+            ], 404);
+        }else{
+            // Eliminar la venta
+        $venta->delete();
+        }
+        
 
         // Confirmar la transacción
         DB::commit();
 
         return response()->json([
-            'message' => 'Venta registrada exitosamente',
-            'venta' => $venta,
-            'detalles' => $detalleVentas
-        ], 201);
+            'message' => 'Venta eliminada exitosamente'
+        ], 200);
     } catch (\Exception $e) {
         // Revertir la transacción en caso de error
         DB::rollback();
         return response()->json([
-            'message' => 'Error al registrar la venta',
+            'message' => 'Error al eliminar la venta',
             'error' => $e->getMessage(),
         ], 500);
     }
 }
 
+    
 }
