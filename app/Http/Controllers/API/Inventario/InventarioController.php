@@ -11,6 +11,7 @@ use App\Models\Productos\UnidadMedida;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use App\Helpers\StringsHelper;
+use App\Models\Compras\DetalleCompra;
 use Illuminate\Database\Eloquent\Builder;
 
 class InventarioController extends Controller
@@ -44,13 +45,13 @@ class InventarioController extends Controller
         $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
 
         $inventario = Inventario::with('producto', 'unidad')
-        ->whereHas('producto',function (Builder $query) use ($search) {
-         $query->where('nombreProducto', 'like', '%' . $search . '%');
-        })
-        ->orderBy($orderBy, $orderDirection)
-        ->paginate($perPage);
+            ->whereHas('producto', function (Builder $query) use ($search) {
+                $query->where('nombreProducto', 'like', '%' . $search . '%');
+            })
+            ->orderBy($orderBy, $orderDirection)
+            ->paginate($perPage);
 
-        
+
         // Esto es para devolver la respuesta en formato JSON con un mensaje y los datos
         $response = $inventario->toArray();
         $response['search'] = $request->query('search', '');
@@ -71,14 +72,14 @@ class InventarioController extends Controller
             'equivalencia' => 'required',
             'unidadMedida' => 'required',
         ]);
-    
+
         if ($validator->fails()) {
             return response()->json([
                 'message' => 'Errores de validación',
                 'errors' => $validator->errors(),
             ], 422);
         }
-    
+
         // Empezar una transacción
         DB::beginTransaction();
         try {
@@ -86,42 +87,65 @@ class InventarioController extends Controller
             $producto = Producto::firstOrCreate(
                 ['nombreProducto' => $request->nombreProducto]
             );
-    
+
             // Encontrar la unidad de medida
             $unidadMedida = UnidadMedida::where('id', $request->unidadMedida)->first();
-    
+
             if (!$unidadMedida) {
                 // Muestra error si la unidad de medida no existe
                 return response()->json([
                     'message' => 'La unidad de medida no existe',
                 ], 409); // Código de estado 409 para conflicto
             }
-    
+
             // Verificar si ya existe un registro en inventario con el mismo producto y unidad de medida
             $inventarioExistente = Inventario::where('producto_id', $producto->id)
                 ->where('unidad_medida_id', $unidadMedida->id)
                 ->first();
-    
+
             if ($inventarioExistente) {
                 // Si ya existe, devolver una respuesta de error
                 return response()->json([
                     'message' => 'El producto con esta unidad de medida ya existe en el inventario',
                 ], 409); // Código de estado 409 para conflicto
             }
-    
+
+            //calculo de costo del producto por medio de costo promedio
+            $detallecompra = DetalleCompra::where('producto_id', $producto->id)->get();
+            //Creamos las variables para almacenar las sumas de los costos y las cantidades
+            $costoTotal = 0;
+            $cantidadTotal = 0;
+            // Recorre los detalles de la compra
+            foreach ($detallecompra as $detalle) {
+                $costoTotal += $detalle->costo * $detalle->cantidad;
+                $cantidadTotal += $detalle->cantidad;
+            }
+
+            // Calcula el costo promedio
+            $costoPromedio = $cantidadTotal > 0 ? $costoTotal / $cantidadTotal : 0;
+
+            $inventario = $inventarioExistente;
+
+            if($inventarioExistente){
+                $inventarioExistente->update([
+                    'precioCosto' => $costoPromedio,
+                ]);
+            }else{
+
             // Crear el registro de inventario
             $inventario = Inventario::create([
                 'producto_id' => $producto->id,
                 'unidad_medida_id' => $unidadMedida->id,
                 'equivalencia' => $request->equivalencia,
                 'existencias' => 0,
-                'precioCosto' => 0,
+                'precioCosto' => $costoPromedio,
                 'precioVenta' => 0
             ]);
-    
+        }
+
             // Confirmar la transacción
             DB::commit();
-    
+
             // Devolver la respuesta en formato JSON
             return response()->json([
                 'message' => 'Inventario creado exitosamente',
@@ -130,7 +154,7 @@ class InventarioController extends Controller
         } catch (\Exception $e) {
             // Deshacer la transacción en caso de error
             DB::rollBack();
-    
+
             // Devolver una respuesta de error
             return response()->json([
                 'message' => 'Error al crear el inventario',
@@ -138,7 +162,7 @@ class InventarioController extends Controller
             ], 500);
         }
     }
-    
+
 
     public function show($codigo)
     {
@@ -153,7 +177,7 @@ class InventarioController extends Controller
                 'data' => []
             ], 404);
         }
-        
+
 
          // Seleccionar solo los campos deseados
     $filteredInventarios = $inventarios->map(function ($inventario) {
@@ -185,21 +209,21 @@ class InventarioController extends Controller
         $inventarios = Inventario::with(['producto', 'unidad'])
             ->where('producto_id', $codigo)
             ->get();
-    
+
         if ($inventarios->isEmpty()) {
             return response()->json([
                 'message' => 'Producto no encontrado',
                 'data' => []
             ], 404);
         }
-    
+
         // Obtener el nombre del producto desde el primer inventario
         $nombreProducto = $inventarios->first()->producto->nombreProducto;
-    
+
         // Estructurar la respuesta con el nombre del producto y los inventarios
         return response()->json([
             'nombreProducto' => $nombreProducto,
-            'data' => $inventarios->map(function($inventario) {
+            'data' => $inventarios->map(function ($inventario) {
                 return [
                     'unidadMedida' => $inventario->unidad->nombreUnidad,
                     'equivalencia' => $inventario->equivalencia
@@ -207,33 +231,33 @@ class InventarioController extends Controller
             })
         ], 200);
     }
-    
 
 
 
-//Actualizar un campo
+
+    //Actualizar un campo
     public function update(Request $request, $id)
     {
         $inventario = Inventario::where('id', $id)->first();
-    
+
         if (!$inventario) {
             return response()->json([
                 'message' => 'Registro no encontrado',
             ], 404);
         }
-    
+
         $inventario->update($request->all());
 
-    // Actualizar el nombre del producto en la tabla productos
-    if ($request->has('nombreProducto')) {
-        $producto = Producto::find($inventario->id); // Asumiendo que inventario tiene producto_id
+        // Actualizar el nombre del producto en la tabla productos
+        if ($request->has('nombreProducto')) {
+            $producto = Producto::find($inventario->id); // Asumiendo que inventario tiene producto_id
 
-        if ($producto) {
-            $producto->nombreProducto = $request->input('nombreProducto');
-            $producto->save();
+            if ($producto) {
+                $producto->nombreProducto = $request->input('nombreProducto');
+                $producto->save();
+            }
         }
-    }
-    
+
         return response()->json([
             'message' => 'Inventario actualizado exitosamente',
             'data' => $inventario,
@@ -244,61 +268,59 @@ class InventarioController extends Controller
 
     //obtener la suma del inventario
     public function sumaInventario()
-{
-    // Obtener todos los registros del inventario
-    $inventories = Inventario::all();
+    {
+        // Obtener todos los registros del inventario
+        $inventories = Inventario::all();
 
-    // Agrupar los registros por producto_id y seleccionar solo el primer registro de cada grupo
-    $uniqueInventories = $inventories->groupBy('producto_id')->map(function ($group) {
-        return $group->first();
-    })->values();
+        // Agrupar los registros por producto_id y seleccionar solo el primer registro de cada grupo
+        $uniqueInventories = $inventories->groupBy('producto_id')->map(function ($group) {
+            return $group->first();
+        })->values();
 
-    // Inicializar variables para almacenar los totales
-    $totalExistencias = 0;
-    $totalPrecioCosto = 0;
-    $totalPrecioVenta = 0;
+        // Inicializar variables para almacenar los totales
+        $totalExistencias = 0;
+        $totalPrecioCosto = 0;
+        $totalPrecioVenta = 0;
 
-    // Recorrer los registros únicos del inventario
-    foreach ($uniqueInventories as $inventory) {
-        // Sumar las existencias, precios de costo y venta para el primer registro de cada producto
-        $totalExistencias += $inventory->existencias;
-        $totalPrecioCosto += $inventory->precioCosto * $inventory->existencias;
-        $totalPrecioVenta += $inventory->precioVenta * $inventory->existencias;
-    }
+        // Recorrer los registros únicos del inventario
+        foreach ($uniqueInventories as $inventory) {
+            // Sumar las existencias, precios de costo y venta para el primer registro de cada producto
+            $totalExistencias += $inventory->existencias;
+            $totalPrecioCosto += $inventory->precioCosto * $inventory->existencias;
+            $totalPrecioVenta += $inventory->precioVenta * $inventory->existencias;
+        }
 
-    // Preparar los resultados
-    $result = [
-        'total_existencias' => $totalExistencias,
-        'total_precio_costo' => $totalPrecioCosto,
-        'total_precio_venta' => $totalPrecioVenta,
-    ];
+        // Preparar los resultados
+        $result = [
+            'total_existencias' => $totalExistencias,
+            'total_precio_costo' => $totalPrecioCosto,
+            'total_precio_venta' => $totalPrecioVenta,
+        ];
 
-    // Devolver los resultados en formato JSON
-    return response()->json([
-        'message' => 'Resumen de inventario',
-        'data' => $result,
-    ], 200);
-}
-
-public function delete($id)
-{
-    // Buscar el inventario por producto_id y unidad_medida_id
-    $inventario = Inventario::where('id', $id)->first();
-
-      // Verificar si la cantidad en inventario es mayor a 0
-      if ($inventario->existencias > 0) {
+        // Devolver los resultados en formato JSON
         return response()->json([
-            'message' => 'No se puede eliminar el producto porque aún hay existencias',
-        ], 400); // Código de estado 400
+            'message' => 'Resumen de inventario',
+            'data' => $result,
+        ], 200);
     }
 
-    // Eliminar el inventario
-    $inventario->delete();
+    public function delete($id)
+    {
+        // Buscar el inventario por producto_id y unidad_medida_id
+        $inventario = Inventario::where('id', $id)->first();
 
-    return response()->json([
-        'message' => 'Producto con la unidad de medida especificada eliminado exitosamente',
-    ], 200);
-}
+        // Verificar si la cantidad en inventario es mayor a 0
+        if ($inventario->existencias > 0) {
+            return response()->json([
+                'message' => 'No se puede eliminar el producto porque aún hay existencias',
+            ], 400); // Código de estado 400
+        }
 
-    
+        // Eliminar el inventario
+        $inventario->delete();
+
+        return response()->json([
+            'message' => 'Producto con la unidad de medida especificada eliminado exitosamente',
+        ], 200);
+    }
 }

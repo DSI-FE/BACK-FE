@@ -19,7 +19,7 @@ class VentasController extends Controller
     public function index()
     {
         // Obtener todas las ventas
-        $ventas = Venta::with('cliente')->get();
+        $ventas = Venta::with('cliente', 'condicion', 'tipo_documento')->get();
 
         // Devolver la respuesta en formato JSON con un mensaje y los datos
         return response()->json([
@@ -32,7 +32,7 @@ class VentasController extends Controller
     public function detalleVenta($id)
     {
         // Obtener la compra con el número dado
-        $venta = Venta::where('id', $id)->first();
+        $venta = Venta::with('condicion', 'tipo_documento')->where('id', $id)->first();
 
         if (!$venta) {
             return response()->json([
@@ -61,6 +61,7 @@ class VentasController extends Controller
     {
         // Validación de los campos de entrada
         $validator = Validator::make($request->all(), [
+            'fecha' => 'required',
             'total_no_sujetas' => 'required',
             'total_exentas' => 'required',
             'total_gravadas' => 'required',
@@ -88,8 +89,9 @@ class VentasController extends Controller
         // Empezar una transacción
         DB::beginTransaction();
         try {
-            // Crear la compra
+            // Crear la venta
             $venta = Venta::create([
+                'fecha' =>$request->fecha,
                 'total_no_sujetas' => $request->total_no_sujetas,
                 'total_exentas' => $request->total_exentas,
                 'total_gravadas' => $request->total_gravadas,
@@ -100,7 +102,6 @@ class VentasController extends Controller
                 'tipo_documento' => $request->tipo_documento,
                 'cliente_id' => $request->cliente_id,
             ]);
-
             $detalleVentas = [];
 
             // Iterar sobre los productos y crear los registros de detalle de compra
@@ -111,26 +112,13 @@ class VentasController extends Controller
                     ->first();
 
                 if ($unidadSeleccionada) {
-                    // Verificar si la cantidad es mayor que las existencias
-                    if ($producto['cantidad'] > $unidadSeleccionada->existencias) {
-                        // Revertir la transacción en caso de error
-                        DB::rollback();
-                        return response()->json([
-                            'message' => 'Error: La cantidad solicitada excede las existencias disponibles.',
-                            'producto_id' => $producto['producto_id'],
-                            'unidad_medida_id' => $producto['unidad_medida_id'],
-                            'existencias_disponibles' => $unidadSeleccionada->existencias,
-                            'cantidad_solicitada' => $producto['cantidad']
-                        ], 400);
-                    }
-
                     $detalleVenta = DetalleVenta::create([
                         'cantidad' => $producto['cantidad'],
                         'precio' => $producto['precio'],
                         'iva' => $producto['iva'],
                         'total' => $producto['total'],
                         'venta_id' => $venta->id,
-                        'producto_id' => $producto['id']
+                        'producto_id' => $producto['producto_id']
                     ]);
 
                     // Disminuir las existencias de la unidad de medida seleccionada
@@ -180,6 +168,7 @@ class VentasController extends Controller
         }
     }
 
+    //actualizar una venta
     public function update(Request $request, $id)
     {
         // Validación de los campos de entrada
@@ -198,7 +187,7 @@ class VentasController extends Controller
             'productos.*.iva' => 'required',
             'productos.*.total' => 'required',
             'productos.*.producto_id' => 'required',
-            'productos.*.unidad_medida_id' => 'required', // Añadido para validar unidad_medida_id
+            'productos.*.unidad_medida_id' => 'required',
         ]);
     
         if ($validator->fails()) {
