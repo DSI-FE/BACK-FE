@@ -99,6 +99,6 @@ class Cliente extends Model
      //Hacer referencia a la venta
      public function ventas()
      {
-         return $this->hasMany('App\Models\Ventas\Venta', 'id_cliente');
+         return $this->hasMany('App\Models\Ventas\Venta', 'cliente_id');
      }
 }

@@ -19,7 +19,9 @@ class ProductosController extends Controller
                 $unidades = $items->map(function ($item) {
                     return [
                         'id' => $item->unidad->id,
-                        'nombreUnidad' => $item->unidad->nombreUnidad
+                        'nombreUnidad' => $item->unidad->nombreUnidad,
+                        'existencias' => $item->existencias,
+                        'precioVenta' => $item->precioVenta
                     ];
                 });
     
@@ -29,7 +31,7 @@ class ProductosController extends Controller
                     'unidades' => $unidades
                 ];
             })
-            ->values(); // Reindexar el array
+            ->values();
     
         // Devolver la respuesta en formato JSON con un mensaje y los datos agrupados
         return response()->json([
