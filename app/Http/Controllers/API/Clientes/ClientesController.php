@@ -16,6 +16,7 @@ use Illuminate\Validation\ValidationException;
 use App\Helpers\StringsHelper;
 use Illuminate\Database\Eloquent\Builder;
 
+
 class ClientesController extends Controller
 {
     // Obtener todos los clientes
