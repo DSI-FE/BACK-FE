@@ -50,7 +50,7 @@ class VentasController extends Controller
         return response()->json([
             'message' => 'Detalle de venta',
             'data' => [
-                'venta' => $venta,
+                'venta' => [$venta],
                 'detalles' => $detalle,
             ],
         ], 200);
@@ -215,11 +215,11 @@ class VentasController extends Controller
     
             // Actualizar los datos de la venta
             $venta->update([
-                'total_no_sujetas' => $request->total_no_sujetas,
-                'total_exentas' => $request->total_exentas,
-                'total_gravadas' => $request->total_gravadas,
-                'total_iva' => $request->total_iva,
-                'total_pagar' => $request->total_pagar,
+                'total_no_sujetas' => $request->input('total_no_sujetas', 0),
+                'total_exentas' => $request->input('total_exentas', 0),
+                'total_gravadas' => $request->input('total_gravadas', 0),
+                'total_iva' => $request->input('total_iva', 0),
+                'total_pagar' => $request->input('total_pagar', 0),
                 'condicion' => $request->condicion,
                 'tipo_documento' => $request->tipo_documento,
                 'cliente_id' => $request->cliente_id,
@@ -231,7 +231,7 @@ class VentasController extends Controller
             $detalleVentas = [];
             foreach ($request->productos as $producto) {
                 // Buscar el ID de inventario basado en producto_id y unidad_medida_id
-                $inventario = Inventario::where('producto_id', $producto['producto_id'])
+                $inventario = Inventario::where('id', $producto['producto_id'])
                     ->where('unidad_medida_id', $producto['unidad_medida_id'])
                     ->first();
     

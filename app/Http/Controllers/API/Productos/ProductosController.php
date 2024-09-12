@@ -18,6 +18,7 @@ class ProductosController extends Controller
                 $producto = $items->first()->producto;
                 $unidades = $items->map(function ($item) {
                     return [
+                        'producto_id' => $item->id,
                         'id' => $item->unidad->id,
                         'nombreUnidad' => $item->unidad->nombreUnidad,
                         'existencias' => $item->existencias,
