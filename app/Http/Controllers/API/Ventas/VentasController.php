@@ -31,7 +31,7 @@ class VentasController extends Controller
     //obtener una venta especifica
     public function detalleVenta($id)
     {
-        // Obtener la compra con el número dado
+        // Obtener la venta con el número dado
         $venta = Venta::with('condicion', 'tipo_documento')->where('id', $id)->first();
 
         if (!$venta) {
@@ -40,7 +40,7 @@ class VentasController extends Controller
             ], 404);
         }
 
-        // Obtener los detalles de la compra
+        // Obtener los detalles de la venta
         $detalle = DetalleVenta::with('producto')
             ->where('venta_id', $venta->id)
             ->get();
@@ -50,7 +50,7 @@ class VentasController extends Controller
         return response()->json([
             'message' => 'Detalle de venta',
             'data' => [
-                'venta' => $venta,
+                'venta' => [$venta],
                 'detalles' => $detalle,
             ],
         ], 200);
@@ -91,7 +91,7 @@ class VentasController extends Controller
         try {
             // Crear la venta
             $venta = Venta::create([
-                'fecha' =>$request->fecha,
+                'fecha' => $request->fecha,
                 'total_no_sujetas' => $request->total_no_sujetas,
                 'total_exentas' => $request->total_exentas,
                 'total_gravadas' => $request->total_gravadas,
@@ -104,7 +104,7 @@ class VentasController extends Controller
             ]);
             $detalleVentas = [];
 
-            // Iterar sobre los productos y crear los registros de detalle de compra
+            // Iterar sobre los productos y crear los registros de detalle de venta
             foreach ($request->productos as $producto) {
                 // Obtener el inventario de la unidad de medida seleccionada
                 $unidadSeleccionada = Inventario::where('producto_id', $producto['producto_id'])
@@ -118,10 +118,10 @@ class VentasController extends Controller
                         'iva' => $producto['iva'],
                         'total' => $producto['total'],
                         'venta_id' => $venta->id,
-                        'producto_id' => $producto['producto_id']
+                        'producto_id' => $unidadSeleccionada['id']
                     ]);
 
-                    // Disminuir las existencias de la unidad de medida seleccionada
+               /*     // Disminuir las existencias de la unidad de medida seleccionada
                     $unidadSeleccionada->existencias -= $detalleVenta->cantidad;
                     $unidadSeleccionada->save();
 
@@ -136,7 +136,7 @@ class VentasController extends Controller
                             }
                             $unidad->save();
                         }
-                    }
+                    }*/
 
                     $detalleVentas[] = $detalleVenta;
                 } else {
@@ -155,6 +155,7 @@ class VentasController extends Controller
 
             return response()->json([
                 'message' => 'Venta registrada exitosamente',
+                'id' => $venta->id,
                 'venta' => $venta,
                 'detalles' => $detalleVentas
             ], 201);
@@ -189,14 +190,14 @@ class VentasController extends Controller
             'productos.*.producto_id' => 'required',
             'productos.*.unidad_medida_id' => 'required',
         ]);
-    
+
         if ($validator->fails()) {
             return response()->json([
                 'message' => 'Errores de validación',
                 'errors' => $validator->errors(),
             ], 422);
         }
-    
+
         DB::beginTransaction();
         try {
             // Obtener la venta a actualizar
@@ -207,34 +208,34 @@ class VentasController extends Controller
                 ], 404);
             }
 
-            if($venta->estado == "Finalizada"){
+            if ($venta->estado == "Finalizada") {
                 return response()->json([
                     'message' => 'Esta venta no se puede modificar porque ya fue facturada'
                 ], 404);
             }
-    
+
             // Actualizar los datos de la venta
             $venta->update([
-                'total_no_sujetas' => $request->total_no_sujetas,
-                'total_exentas' => $request->total_exentas,
-                'total_gravadas' => $request->total_gravadas,
-                'total_iva' => $request->total_iva,
-                'total_pagar' => $request->total_pagar,
+                'total_no_sujetas' => $request->input('total_no_sujetas', 0),
+                'total_exentas' => $request->input('total_exentas', 0),
+                'total_gravadas' => $request->input('total_gravadas', 0),
+                'total_iva' => $request->input('total_iva', 0),
+                'total_pagar' => $request->input('total_pagar', 0),
                 'condicion' => $request->condicion,
                 'tipo_documento' => $request->tipo_documento,
                 'cliente_id' => $request->cliente_id,
             ]);
-    
+
             // Eliminar los detalles de venta existentes
             DetalleVenta::where('venta_id', $venta->id)->delete();
-    
+
             $detalleVentas = [];
             foreach ($request->productos as $producto) {
                 // Buscar el ID de inventario basado en producto_id y unidad_medida_id
                 $inventario = Inventario::where('producto_id', $producto['producto_id'])
                     ->where('unidad_medida_id', $producto['unidad_medida_id'])
                     ->first();
-    
+
                 if (!$inventario) {
                     // Manejar el caso en que no se encuentra el inventario
                     DB::rollback();
@@ -242,7 +243,7 @@ class VentasController extends Controller
                         'message' => 'Inventario no encontrado para el producto y unidad de medida proporcionados',
                     ], 404);
                 }
-    
+
                 // Crear el detalle de venta
                 $detalleVenta = DetalleVenta::create([
                     'cantidad' => $producto['cantidad'],
@@ -250,15 +251,15 @@ class VentasController extends Controller
                     'iva' => $producto['iva'],
                     'total' => $producto['total'],
                     'venta_id' => $venta->id,
-                    'producto_id' => $inventario->id 
+                    'producto_id' => $inventario['id']
                 ]);
-    
+
                 $detalleVentas[] = $detalleVenta;
             }
-    
+
             // Confirmar la transacción
             DB::commit();
-    
+
             return response()->json([
                 'message' => 'Venta actualizada exitosamente',
                 'venta' => $venta,
@@ -274,47 +275,45 @@ class VentasController extends Controller
         }
     }
 
-//Funcion para eliminar una venta
+    //Funcion para eliminar una venta
     public function delete($id)
-{
-    DB::beginTransaction();
-    try {
-        // Obtener la venta a eliminar
-        $venta = Venta::find($id);
-        if (!$venta) {
+    {
+        DB::beginTransaction();
+        try {
+            // Obtener la venta a eliminar
+            $venta = Venta::find($id);
+            if (!$venta) {
+                return response()->json([
+                    'message' => 'La venta no fue encontrada, no se puede facturar'
+                ], 404);
+            }
+
+            // Eliminar los detalles de venta asociados
+            DetalleVenta::where('venta_id', $venta->id)->delete();
+
+            if ($venta->estado == "Finalizada") {
+                return response()->json([
+                    'message' => 'Esta venta no se puede eliminar porque ya fue facturada'
+                ], 404);
+            } else {
+                // Eliminar la venta
+                $venta->delete();
+            }
+
+
+            // Confirmar la transacción
+            DB::commit();
+
             return response()->json([
-                'message' => 'La venta no fue encontrada'
-            ], 404);
-        }
-
-        // Eliminar los detalles de venta asociados
-        DetalleVenta::where('venta_id', $venta->id)->delete();
-
-        if($venta->estado == "Finalizada"){
+                'message' => 'Venta eliminada exitosamente'
+            ], 200);
+        } catch (\Exception $e) {
+            // Revertir la transacción en caso de error
+            DB::rollback();
             return response()->json([
-                'message' => 'Esta venta no se puede eliminar porque ya fue facturada'
-            ], 404);
-        }else{
-            // Eliminar la venta
-        $venta->delete();
+                'message' => 'Error al eliminar la venta',
+                'error' => $e->getMessage(),
+            ], 500);
         }
-        
-
-        // Confirmar la transacción
-        DB::commit();
-
-        return response()->json([
-            'message' => 'Venta eliminada exitosamente'
-        ], 200);
-    } catch (\Exception $e) {
-        // Revertir la transacción en caso de error
-        DB::rollback();
-        return response()->json([
-            'message' => 'Error al eliminar la venta',
-            'error' => $e->getMessage(),
-        ], 500);
     }
-}
-
-    
 }
