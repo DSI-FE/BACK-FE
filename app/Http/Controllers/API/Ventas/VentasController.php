@@ -11,6 +11,11 @@ use App\Models\Productos\Producto;
 use App\Models\Productos\UnidadMedida;
 use App\Models\Ventas\DetalleVenta;
 use Illuminate\Support\Facades\DB;
+use Exception;
+use File;
+use Storage;
+use TCPDF;
+use TCPDF_COLORS;
 
 class VentasController extends Controller
 {
@@ -121,7 +126,7 @@ class VentasController extends Controller
                         'producto_id' => $unidadSeleccionada['id']
                     ]);
 
-               /*     // Disminuir las existencias de la unidad de medida seleccionada
+                    /*     // Disminuir las existencias de la unidad de medida seleccionada
                     $unidadSeleccionada->existencias -= $detalleVenta->cantidad;
                     $unidadSeleccionada->save();
 
@@ -315,5 +320,22 @@ class VentasController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function descargarFactura($id)
+    {
+        $venta = Venta::with('cliente', 'condicion', 'tipo_documento', 'detalles.producto')->find($id);
+        if (!$venta) {
+            return response()->json([
+                'message' => 'Venta no encontrada'
+            ], 404);
+        }
+        $pdf = new \TCPDF();
+        $pdf->AddPage();
+        $pdf->writeHTML('<h1>Factura #' . $venta->id . '</h1>');
+        $pdf->writeHTML('<p>Cliente: ' . $venta->cliente->nombre . '</p>');
+        $pdf->writeHTML('<p>Total a pagar: $' . $venta->total_pagar . '</p>');
+
+        return response($pdf->Output('Factura_' . $venta->id . '.pdf', 'S'))->header('Content-Type', 'application/pdf');
     }
 }
