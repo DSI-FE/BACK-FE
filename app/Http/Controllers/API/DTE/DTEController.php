@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\API\DTE;
 
+use App\Http\Controllers\API\Ventas\VentasController;
 use App\Http\Controllers\Controller;
 use App\Mail\MiCorreo;
 use App\Models\Clientes\Cliente;
@@ -18,6 +19,12 @@ use Illuminate\Support\Facades\Validator;
 
 class DTEController extends Controller
 {
+    protected $ventasController;
+
+    public function __construct(VentasController $ventasController)
+    {
+        $this->ventasController = $ventasController;
+    }
     // Obtener un DTE específico por ID de dte
     public function verDte($id)
     {
@@ -36,7 +43,7 @@ class DTEController extends Controller
             ->where('venta_id', $dte->id_venta)
             ->get();
 
-        
+
         // Esto es para obtener todos los clientes junto con sus relaciones utilizando Eloquent ORM
         $emisor = Emisor::with(['department', 'municipality', 'economicActivity'])
             ->where('id', 1)->first();
@@ -46,7 +53,7 @@ class DTEController extends Controller
             'message' => 'Detalles del DTE',
             'data' => $dte,
             'emisor' => $emisor,
-            'detalle' => $detalle
+            'detalle' => $detalle,
         ], 200);
     }
 
@@ -159,10 +166,26 @@ class DTEController extends Controller
                 }
             }
 
+            //Llamar el metodo para crear la factura
+            $factura = $this->ventasController->descargarFactura($id);
+            $contenidoPDF = $factura->getContent();
+            $jsonData = [
+                'data' => $dte,
+                'detalle' => $detalle
+            ];
             //Envio del correo
-        $cliente = Cliente::where('id', $dte->ventas->cliente_id)->first();
-        $mensaje = 'PDF, JSON';
-        Mail::to('alfonsogaldamez2@gmail.com')->send(new MiCorreo($cliente->nombres .' '. $cliente->apellidos, $dte->fecha,$dte->codigo_generacion, $dte->numero_control, $mensaje));
+            $cliente = Cliente::where('id', $dte->ventas->cliente_id)->first();
+            Mail::to('alfonsogaldamez2@gmail.com')->send(
+                new MiCorreo(
+                    $cliente->nombres . ' ' . $cliente->apellidos,
+                    $dte->fecha,
+                    $dte->codigo_generacion,
+                    $dte->numero_control,
+                    $contenidoPDF,
+                    $dte,
+                    json_encode($jsonData)
+                )
+            );
 
 
             DB::commit();

@@ -14,15 +14,19 @@ class MiCorreo extends Mailable
     public $fecha;
     public $codigo_generacion;
     public $numero_control;
-    public $detalle;
+    public $contenidoPDF;
+    public $dte;
+    public $json;
 
-    public function __construct( $nombre, $fecha, $codigo_generacion, $numero_control, $detalle)
+    public function __construct( $nombre, $fecha, $codigo_generacion, $numero_control, $contenidoPDF, $dte, $json)
     {
         $this->nombre = $nombre;
         $this->fecha = $fecha;
         $this->codigo_generacion = $codigo_generacion;
         $this->numero_control = $numero_control;
-        $this->detalle = $detalle;
+        $this->contenidoPDF = $contenidoPDF;
+        $this->dte = $dte;
+        $this->json = $json;
     }
 
     /**
@@ -33,6 +37,12 @@ class MiCorreo extends Mailable
     public function build()
     {
         return $this->view('mails.mi_correo')
-                    ->subject('DTE - Ferreteria Flores');
+                    ->subject('DTE - Ferreteria Flores')
+                    ->attachData($this->contenidoPDF, 'DTE-'. $this->dte->codigo_generacion .'.pdf', [
+                        'mime' => 'application/pdf',
+                    ])
+                    ->attachData($this->json, 'DTE-'.$this->dte->codigo_generacion.'.json', [
+                        'mime' => 'application/json',
+                    ]);
     }
 }

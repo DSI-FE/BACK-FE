@@ -24,7 +24,7 @@ class InventarioController extends Controller
             'search' => ['nullable', 'max:250'],
             'perPage' => ['nullable', 'integer', 'min:1'],
             'sort' => ['nullable'],
-            'sort.order' => ['nullable', Rule::in(['id, nombreProducto'])],
+            'sort.order' => ['nullable', Rule::in(['id'])],
             'sort.key' => ['nullable', Rule::in(['asc', 'desc'])],
         ];
 
@@ -48,8 +48,10 @@ class InventarioController extends Controller
             ->whereHas('producto', function (Builder $query) use ($search) {
                 $query->where('nombreProducto', 'like', '%' . $search . '%');
             })
-            ->orderBy($orderBy, $orderDirection)
+            ->join('productos', 'inventario.producto_id', '=', 'productos.id')
+            ->orderBy('inventario.id', $orderDirection)
             ->paginate($perPage);
+
 
 
         // Esto es para devolver la respuesta en formato JSON con un mensaje y los datos
@@ -126,22 +128,22 @@ class InventarioController extends Controller
 
             $inventario = $inventarioExistente;
 
-            if($inventarioExistente){
+            if ($inventarioExistente) {
                 $inventarioExistente->update([
                     'precioCosto' => $costoPromedio,
                 ]);
-            }else{
+            } else {
 
-            // Crear el registro de inventario
-            $inventario = Inventario::create([
-                'producto_id' => $producto->id,
-                'unidad_medida_id' => $unidadMedida->id,
-                'equivalencia' => $request->equivalencia,
-                'existencias' => 0,
-                'precioCosto' => $costoPromedio,
-                'precioVenta' => 0
-            ]);
-        }
+                // Crear el registro de inventario
+                $inventario = Inventario::create([
+                    'producto_id' => $producto->id,
+                    'unidad_medida_id' => $unidadMedida->id,
+                    'equivalencia' => $request->equivalencia,
+                    'existencias' => 0,
+                    'precioCosto' => $costoPromedio,
+                    'precioVenta' => 0
+                ]);
+            }
 
             // Confirmar la transacción
             DB::commit();
@@ -168,7 +170,7 @@ class InventarioController extends Controller
     {
         // Obtener inventarios por id
         $inventarios = Inventario::with(['producto', 'unidad'])
-            ->where('id', $codigo)
+            ->where('producto_id', $codigo)
             ->get();
 
         if ($inventarios->isEmpty()) {
@@ -179,20 +181,20 @@ class InventarioController extends Controller
         }
 
 
-         // Seleccionar solo los campos deseados
-    $filteredInventarios = $inventarios->map(function ($inventario) {
-        return [
-            'id' => $inventario->id,
-            'producto_id' => $inventario->producto_id,
-            'nombre_producto' => $inventario->producto->nombreProducto,
-            'unidad_medida' => $inventario->unidad_medida_id,
-            'nombre_unidad_medida' => $inventario->unidad->nombreUnidad,
-            'equivalencia' =>$inventario->equivalencia,
-            'existencias' => $inventario->existencias,
-            'precioCosto' => $inventario->precioCosto,
-            'precioVenta' => $inventario->precioVenta
-        ];
-    });
+        // Seleccionar solo los campos deseados
+        $filteredInventarios = $inventarios->map(function ($inventario) {
+            return [
+                'id' => $inventario->id,
+                'producto_id' => $inventario->producto_id,
+                'nombre_producto' => $inventario->producto->nombreProducto,
+                'unidad_medida' => $inventario->unidad_medida_id,
+                'nombre_unidad_medida' => $inventario->unidad->nombreUnidad,
+                'equivalencia' => $inventario->equivalencia,
+                'existencias' => $inventario->existencias,
+                'precioCosto' => $inventario->precioCosto,
+                'precioVenta' => $inventario->precioVenta
+            ];
+        });
 
         return response()->json([
             'message' => 'Producto con sus unidades de medida',

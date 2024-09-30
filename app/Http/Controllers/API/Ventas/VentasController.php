@@ -4,15 +4,23 @@ namespace App\Http\Controllers\API\Ventas;
 
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+use App\Mail\MiCorreo;
+use App\Models\Clientes\Cliente;
 use App\Models\Ventas\Venta;
 use Illuminate\Support\Facades\Validator;
 use App\Models\Inventarios\Inventario;
-use App\Models\Productos\Producto;
+use App\Models\DTE\DTE;
+use App\Models\DTE\Emisor;
 use App\Models\Productos\UnidadMedida;
 use App\Models\Ventas\DetalleVenta;
+//use BaconQrCode\Encoder\QrCode;
 use Illuminate\Support\Facades\DB;
 use Exception;
 use File;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use NumberToWords\NumberToWords;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Storage;
 use TCPDF;
 use TCPDF_COLORS;
@@ -322,20 +330,273 @@ class VentasController extends Controller
         }
     }
 
-    public function descargarFactura($id)
+    public static function descargarFactura($id)
     {
-        $venta = Venta::with('cliente', 'condicion', 'tipo_documento', 'detalles.producto')->find($id);
-        if (!$venta) {
-            return response()->json([
-                'message' => 'Venta no encontrada'
-            ], 404);
-        }
+
+        // Obtener el DTE junto con su venta asociada
+        $dte = DTE::with('ventas',  'ambiente', 'moneda', 'tipo')->where('id_venta', $id)->first();
+
+        // Obtener los detalles de la venta
+        $detalle = DetalleVenta::with('producto')
+            ->where('venta_id', $id)
+            ->get();
+        // Esto es para obtener todos los clientes junto con sus relaciones utilizando Eloquent ORM
+        $emisor = Emisor::with(['department', 'municipality', 'economicActivity'])
+            ->where('id', 1)->first();
+
+        //convertir el total a letras
+        $numeroLetras = new NumberToWords();
+        $resultado = $numeroLetras->getNumberTransformer('es');
+        // Obtener el total a pagar
+        $totalPagar = $dte->ventas->total_pagar;
+        // Separar parte entera y decimal
+        $parteEntera = intval($totalPagar);
+        $parteDecimal = ($totalPagar - $parteEntera) * 100;
+        // Convertir la parte entera a letras
+        $totalEnLetras = strtoupper($resultado->toWords($parteEntera)) . ' ' . sprintf('%02d', $parteDecimal) . '/100 DOLARES';
+
+        $ambientes = [
+            1 => (object)['codigo' => '00', 'nombre' => 'Modo prueba'],
+            2 => (object)['codigo' => '01', 'nombre' => 'Modo producción']
+        ];
+        $codigoAmbiente = isset($ambientes[$dte->ambiente]) ? $ambientes[$dte->ambiente]->codigo : null;
+        //URL que va a contener el pdf
+        $url = 'https://admin.factura.gob.sv/consultaPublica?ambiente=' . $codigoAmbiente . '&codGen=' . $dte->codigo_generacion . '&fechaEmi=' . $dte->fecha;
+
+        //Diseño del pdf
         $pdf = new \TCPDF();
         $pdf->AddPage();
-        $pdf->writeHTML('<h1>Factura #' . $venta->id . '</h1>');
-        $pdf->writeHTML('<p>Cliente: ' . $venta->cliente->nombre . '</p>');
-        $pdf->writeHTML('<p>Total a pagar: $' . $venta->total_pagar . '</p>');
+        $pdf->writeHTML('<h3 style="text-align: center; font-size: 13px; font-family: \'Times New Roman\', Times, serif;">DOCUMENTO TRIBUTARIO ELECTRONICO</h3>');
+        $pdf->writeHTML('<h3 style="text-align: center; font-size: 13px; font-family: \'Times New Roman\', Times, serif;">' . $dte->tipo->nombre . '</h3>');
+        // Generar el código QR en el centro
+        $pdf->write2DBarcode($url, 'QRCODE,H', 92, 25, 25, 25, array('border' => false), 'N');
 
-        return response($pdf->Output('Factura_' . $venta->id . '.pdf', 'S'))->header('Content-Type', 'application/pdf');
+        // Definir el contenido de la tabla
+        $tablaDTE = '
+<table border="0" cellspacing="5" cellpadding="5" width="100%; ">
+    <tr>
+        <td style="text-align: left; width: 55%; font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
+            <p>Código de generación: <br>' . $dte->codigo_generacion . '</p>
+            <p>Número de control: <br>' . $dte->numero_control . '</p>
+            <p>Sello de recepción: <br>' . $dte->sello_recepcion . '</p>
+        </td>
+        <td style="text-align: left; width: 55%; font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
+            <p>Modelo de facturación: <br>Modelo facturación previo</p>
+            <p>Tipo de transmisión: <br>Transmisión normal</p>
+            <p>Fecha y hora de generación: <br>' . $dte->fecha . ' ' . $dte->hora . '</p>
+        </td>
+    </tr>
+</table>';
+
+        // Escribir la tabla en el PDF
+        $pdf->writeHTML($tablaDTE, true, false, true, false, '');
+
+
+        $tablaEmisor = '
+<table style="font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
+    <tr>
+        <th style="text-align: center; border: 1px solid gray;  height: 25px; background-color: #73E1B7; font-size: 12px;"><strong>Emisor</strong></th>
+    </tr>
+    <tr>
+       <td style="font-family: \'Times New Roman\', Times, serif; font-weight: bold; font-size: 14px;">' . $emisor->nombre . '</td>
+
+    </tr>
+    <tr>
+       <td>NIT: ' . $emisor->nit . '</td>
+    </tr>
+    <tr>
+       <td>NRC: ' . $emisor->nrc . '</td>
+    </tr>
+    <tr>
+       <td>Actividad económica: ' . $emisor->economic_activity_name . '</td>
+    </tr>
+    <tr>
+       <td>Dirección: ' . $emisor->direccion . ', ' . $emisor->municipality->name . ', ' . $emisor->department->name . '</td>
+    </tr>
+    <tr>
+       <td>Teléfono: ' . $emisor->telefono . '</td>
+    </tr>
+    <tr>
+       <td>Correo electrónico: ' . $emisor->correo . '</td>
+    </tr>
+    <tr>
+       <td>Tipo de establecimiento: CASA MATRIZ</td>
+    </tr>
+</table>';
+
+
+        $tablaCliente = '
+<table style=" font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
+    <tr>
+         <th style="text-align: center; border: 1px solid gray;  height: 25px; background-color: #73E1B7;  font-size: 12px;"><strong>Receptor</strong></th>
+    </tr>
+    <tr>
+         <th style="font-family: \'Times New Roman\', Times, serif; font-weight: bold; font-size: 14px;">' . $dte->ventas->cliente_nombre . '</th>
+    </tr>
+    <tr>
+         <th>Tipo de Documento: DUI</th>
+    </tr>
+    <tr>
+         <th>Numero de Documento: ' . $dte->ventas->cliente->numeroDocumento . '</th>
+    </tr>
+    <tr>
+         <th>NRC: ' . $dte->ventas->cliente->nrc . '</th>
+    </tr>
+    <tr>
+         <th>Actividad económica: ' . $dte->ventas->cliente->economic_activity_name . '</th>
+    </tr>
+    <tr>
+         <th>Dirección: ' . $dte->ventas->cliente->direccion . ', ' . $dte->ventas->cliente->municipality_name . ', ' . $dte->ventas->cliente->department_name . '</th>
+    </tr>
+    <tr>
+         <th>Correo electrónico: ' . $dte->ventas->cliente->correoElectronico . '</th>
+    </tr>
+    <tr>
+         <th>Teléfono: ' . $dte->ventas->cliente->telefono . '</th>
+    </tr>
+</table>';
+
+        $tablaContenido = ' <br><br><br>
+<table style="border-collapse: collapse; width: 100%;  font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
+    <tr style="background-color: #23DEA1; text-align: center; font-weight: bold">
+         <th style="width: 23px;">N°</th>
+         <th style="width: 46px;">Cantidad</th>
+         <th style="width: 200px;">Descripción</th>
+         <th style="width: 42px;">Unidad</th>
+         <th style="width: 42px;">Precio Unitario</th>
+         <th style="width: 42px;">Desc Item</th>
+         <th style="width: 47px;">Ventas no sujetas</th>
+         <th style="width: 42px;">Ventas Exentas</th>
+         <th style="width: 50px;">Ventas Gravadas</th>
+    </tr>';
+        // Iteramos sobre el array para agregar los productos a la tabla
+        $numero = 1;
+
+        // Iterar solo sobre los productos
+        foreach ($detalle as $item) {
+            if ($dte->tipo_documento == 2) {
+                $tablaContenido .= '
+            <tr style="font-size: 9px; ">
+                 <td style="height: 15px">' . $numero++ . '</td>
+                 <td>' . $item['cantidad'] . '</td>
+                 <td>' . $item['producto']['nombre_producto'] . '</td>
+                 <td>' . $item['producto']['unidad_medida'] . '</td>
+                 <td>$' . number_format($item['precio'] / 1.13, 2) . '</td>
+                 <td>$0.00</td>
+                 <td>$0.00</td>
+                 <td>$0.00</td>
+                 <td>$' . number_format($item['total'] / 1.13, 2) . '</td>
+            </tr>';
+            } else {
+                $tablaContenido .= '
+            <tr style="font-size: 9px">
+                 <td style="height: 15px">' . $numero++ . '</td>
+                 <td>' . $item['cantidad'] . '</td>
+                 <td>' . $item['producto']['nombre_producto'] . '</td>
+                 <td>' . $item['producto']['unidad_medida'] . '</td>
+                 <td>$' . number_format($item['precio'], 2) . '</td>
+                 <td>$0.00</td>
+                 <td>$0.00</td>
+                 <td>$0.00</td>
+                 <td>$' . number_format($item['total'], 2) . '</td>
+            </tr>';
+            }
+        }
+
+        // Colocar la suma de ventas después del foreach
+        if ($dte->tipo_documento == 2) {
+            $tablaContenido .= '
+            <hr>
+            <tr>
+                <td colspan="8" style="text-align: right;">Suma de ventas:</td>
+                <td colspan="1">$ ' . $dte->ventas->total_gravadas . '</td>
+            </tr>';
+        } else {
+            $tablaContenido .= '
+            <hr>
+            <tr>
+                <td colspan="8" style="text-align: right;">Suma de ventas:</td>
+                <td colspan="1">$ ' . $dte->ventas->total_pagar . '</td>
+            </tr>';
+        }
+
+        // Añadir el resto del contenido
+        $tablaContenido .= '
+        <tr>
+            <td colspan="8" style="text-align: right;">Monto global Desc., Rebajas y otros a ventas no sujetas:</td>
+            <td colspan="1">$ 0.00</td>
+        </tr>
+        <tr>
+            <td colspan="8" style="text-align: right;">Monto global Desc., Rebajas y otros a ventas Exentas:</td>
+            <td colspan="1">$ 0.00</td>
+        </tr>
+        <tr>
+            <td colspan="8" style="text-align: right;">Monto global Desc., Rebajas y otros a ventas Gravadas:</td>
+            <td colspan="1">$ 0.00</td>
+        </tr>';
+
+        if ($dte->tipo_documento == 2) {
+            $tablaContenido .= '
+        <tr>
+            <td colspan="8" style="text-align: right;">Subtotal:</td>
+            <td colspan="1">$ ' . $dte->ventas->total_gravadas . '</td>
+        </tr>
+        <tr>
+            <td colspan="8" style="text-align: right;">IVA:</td>
+            <td colspan="1">$ ' . $dte->ventas->total_iva . '</td>
+        </tr>';
+        } else {
+            $tablaContenido .= '
+        <tr>
+            <td colspan="8" style="text-align: right;">Subtotal:</td>
+            <td colspan="1">$ ' . $dte->ventas->total_pagar . '</td>
+        </tr>';
+        }
+
+        $tablaContenido .= '
+        <tr>
+            <td colspan="8" style="text-align: right;">IVA Retenido:</td>
+            <td colspan="1">$ 0.00</td>
+        </tr>
+        <tr>
+            <td colspan="8" style="text-align: right;">Retención de renta:</td>
+            <td colspan="1">$ 0.00</td>
+        </tr>
+        <tr>
+            <td colspan="8" style="text-align: right;">Monto total de la operación:</td>
+            <td colspan="1">$ 0.00</td>
+        </tr><br>
+        <tr>
+            <td colspan="8" style="text-align: right;">Total a pagar:</td>
+            <td colspan="1"><strong>$ ' . $dte->ventas->total_pagar . '</strong></td>
+        </tr><hr>
+        <tr>
+            <td colspan="9" style="text-align: left; background-color: #23DEA1; height: 25px;">VALOR EN LETRAS:  ' . $totalEnLetras . '</td>
+        </tr>';
+
+        $tablaContenido .= '
+</table>';
+
+
+        // Escribir la tabla del Emisor (a la izquierda)
+        $pdf->writeHTMLCell(90, '', 10, '', $tablaEmisor, 0, 0, 0, true, 'L', true);
+
+        // Escribir la tabla del Cliente (a la derecha)
+        $pdf->writeHTMLCell(90, '', 110, '', $tablaCliente, 0, 1, 0, true, 'L', true);
+
+        //tabla de productos
+        $pdf->writeHTMLCell('', '', '', '', $tablaContenido, 0, 1, 0, true, 'L', true);
+
+        //JSON que se le enviará al correo
+        $jsonData = ([
+            'data' => $dte,
+            'detalle' => $detalle
+        ]);
+        set_time_limit(120); // Establecer el tiempo de ejecución a 120 segundos
+
+
+
+        return response($pdf->Output('Factura_' . $dte->codigo_generacion . '.pdf', 'S'))
+        ->header('Content-Type', 'application/pdf');
     }
 }

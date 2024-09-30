@@ -60,4 +60,6 @@ class DTE extends Model
     {
         return $this->belongsTo(TipoDocumento::class,  'tipo_documento');
     }
+ 
+
 }
