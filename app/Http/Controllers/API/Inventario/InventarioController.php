@@ -17,53 +17,52 @@ use Illuminate\Database\Eloquent\Builder;
 class InventarioController extends Controller
 {
     //Obtener todos los productos
-    public function index(Request $request)
-    {
+ //Obtener todos los productos
+ public function index(Request $request)
+ {
 
-        $rules = [
-            'search' => ['nullable', 'max:250'],
-            'perPage' => ['nullable', 'integer', 'min:1'],
-            'sort' => ['nullable'],
-            'sort.order' => ['nullable', Rule::in(['id'])],
-            'sort.key' => ['nullable', Rule::in(['asc', 'desc'])],
-        ];
+     $rules = [
+         'search' => ['nullable', 'max:250'],
+         'perPage' => ['nullable', 'integer', 'min:1'],
+         'sort' => ['nullable'],
+         'sort.order' => ['nullable', Rule::in(['id, nombreProducto'])],
+         'sort.key' => ['nullable', Rule::in(['asc', 'desc'])],
+     ];
 
-        $messages = [
-            'search.max' => 'El criterio de búsqueda enviado excede la cantidad máxima permitida.',
-            'perPage.integer' => 'Solicitud de cantidad de registros por página con formato irreconocible.',
-            'perPage.min' => 'La cantidad de registros por página no puede ser menor a 1.',
-            'sort.order.in' => 'El valor de ordenamiento es inválido.',
-            'sort.key.in' => 'El valor de clave de ordenamiento es inválido.',
-        ];
+     $messages = [
+         'search.max' => 'El criterio de búsqueda enviado excede la cantidad máxima permitida.',
+         'perPage.integer' => 'Solicitud de cantidad de registros por página con formato irreconocible.',
+         'perPage.min' => 'La cantidad de registros por página no puede ser menor a 1.',
+         'sort.order.in' => 'El valor de ordenamiento es inválido.',
+         'sort.key.in' => 'El valor de clave de ordenamiento es inválido.',
+     ];
 
-        $request->validate($rules, $messages);
-        $search = StringsHelper::normalizarTexto($request->query('search', ''));
-        $perPage = $request->query('perPage', 10);
+     $request->validate($rules, $messages);
+     $search = StringsHelper::normalizarTexto($request->query('search', ''));
+     $perPage = $request->query('perPage', 10);
 
-        $sort = json_decode($request->input('sort'), true);
-        $orderBy = isset($sort['key']) && !empty($sort['key']) ? $sort['key'] : 'id';
-        $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
+     $sort = json_decode($request->input('sort'), true);
+     $orderBy = isset($sort['key']) && !empty($sort['key']) ? $sort['key'] : 'id';
+     $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
 
-        $inventario = Inventario::with('producto', 'unidad')
-            ->whereHas('producto', function (Builder $query) use ($search) {
-                $query->where('nombreProducto', 'like', '%' . $search . '%');
-            })
-            ->join('productos', 'inventario.producto_id', '=', 'productos.id')
-            ->orderBy('inventario.id', $orderDirection)
-            ->paginate($perPage);
-
+     $inventario = Inventario::with('producto', 'unidad')
+         ->whereHas('producto', function (Builder $query) use ($search) {
+             $query->where('nombreProducto', 'like', '%' . $search . '%');
+         })
+         ->orderBy($orderBy, $orderDirection)
+         ->paginate($perPage);
 
 
-        // Esto es para devolver la respuesta en formato JSON con un mensaje y los datos
-        $response = $inventario->toArray();
-        $response['search'] = $request->query('search', '');
-        $response['sort'] = [
-            'orderBy' => $orderBy,
-            'orderDirection' => $orderDirection
-        ];
+     // Esto es para devolver la respuesta en formato JSON con un mensaje y los datos
+     $response = $inventario->toArray();
+     $response['search'] = $request->query('search', '');
+     $response['sort'] = [
+         'orderBy' => $orderBy,
+         'orderDirection' => $orderDirection
+     ];
 
-        return response()->json($response, 200);
-    }
+     return response()->json($response, 200);
+ }
 
     //Aqui se hace el insert al inventario y a la vez el producto
     public function store(Request $request)
@@ -128,22 +127,22 @@ class InventarioController extends Controller
 
             $inventario = $inventarioExistente;
 
-            if ($inventarioExistente) {
+            if($inventarioExistente){
                 $inventarioExistente->update([
                     'precioCosto' => $costoPromedio,
                 ]);
-            } else {
+            }else{
 
-                // Crear el registro de inventario
-                $inventario = Inventario::create([
-                    'producto_id' => $producto->id,
-                    'unidad_medida_id' => $unidadMedida->id,
-                    'equivalencia' => $request->equivalencia,
-                    'existencias' => 0,
-                    'precioCosto' => $costoPromedio,
-                    'precioVenta' => 0
-                ]);
-            }
+            // Crear el registro de inventario
+            $inventario = Inventario::create([
+                'producto_id' => $producto->id,
+                'unidad_medida_id' => $unidadMedida->id,
+                'equivalencia' => $request->equivalencia,
+                'existencias' => 0,
+                'precioCosto' => $costoPromedio,
+                'precioVenta' => 0
+            ]);
+        }
 
             // Confirmar la transacción
             DB::commit();
@@ -170,7 +169,7 @@ class InventarioController extends Controller
     {
         // Obtener inventarios por id
         $inventarios = Inventario::with(['producto', 'unidad'])
-            ->where('producto_id', $codigo)
+            ->where('id', $codigo)
             ->get();
 
         if ($inventarios->isEmpty()) {
@@ -181,20 +180,20 @@ class InventarioController extends Controller
         }
 
 
-        // Seleccionar solo los campos deseados
-        $filteredInventarios = $inventarios->map(function ($inventario) {
-            return [
-                'id' => $inventario->id,
-                'producto_id' => $inventario->producto_id,
-                'nombre_producto' => $inventario->producto->nombreProducto,
-                'unidad_medida' => $inventario->unidad_medida_id,
-                'nombre_unidad_medida' => $inventario->unidad->nombreUnidad,
-                'equivalencia' => $inventario->equivalencia,
-                'existencias' => $inventario->existencias,
-                'precioCosto' => $inventario->precioCosto,
-                'precioVenta' => $inventario->precioVenta
-            ];
-        });
+         // Seleccionar solo los campos deseados
+    $filteredInventarios = $inventarios->map(function ($inventario) {
+        return [
+            'id' => $inventario->id,
+            'producto_id' => $inventario->producto_id,
+            'nombre_producto' => $inventario->producto->nombreProducto,
+            'unidad_medida' => $inventario->unidad_medida_id,
+            'nombre_unidad_medida' => $inventario->unidad->nombreUnidad,
+            'equivalencia' =>$inventario->equivalencia,
+            'existencias' => $inventario->existencias,
+            'precioCosto' => $inventario->precioCosto,
+            'precioVenta' => $inventario->precioVenta
+        ];
+    });
 
         return response()->json([
             'message' => 'Producto con sus unidades de medida',
@@ -209,7 +208,7 @@ class InventarioController extends Controller
     {
         // Obtener inventarios por id
         $inventarios = Inventario::with(['producto', 'unidad'])
-            ->where('producto_id', $codigo)
+            ->where('id', $codigo)
             ->get();
 
         if ($inventarios->isEmpty()) {
@@ -252,7 +251,7 @@ class InventarioController extends Controller
 
         // Actualizar el nombre del producto en la tabla productos
         if ($request->has('nombreProducto')) {
-            $producto = Producto::find($inventario->id); // Asumiendo que inventario tiene producto_id
+            $producto = Producto::find($inventario->producto_id);
 
             if ($producto) {
                 $producto->nombreProducto = $request->input('nombreProducto');
