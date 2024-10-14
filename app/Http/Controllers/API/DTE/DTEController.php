@@ -112,6 +112,12 @@ class DTEController extends Controller
         $nuevoCodigo = str_pad(strval(intval($UltimosDigitos) + 1), 15, '0', STR_PAD_LEFT);
         $numero_control = 'DTE-' . '0' . $venta->tipo_documento . '-M001P001-' . $nuevoCodigo;
 
+        //crear la version del json, si es factura es 1 si es credito fiscal es 3
+        if($venta->tipo_documento ==1){
+            $version =1;
+        }else{
+            $version =3;
+        }
         DB::beginTransaction();
         try {
             // Crear el nuevo DTE
@@ -142,7 +148,17 @@ class DTEController extends Controller
                 if ($inventario) {
                     // Disminuir existencias
                     $inventario->existencias -= $item->cantidad;
-                    $inventario->save();
+                    if($inventario->existencias < 0){
+                        DB::rollback();
+                        return response()->json([
+                            'message' => 'Error: No hay suficientes existencias para el producto proporcionado.',
+                            'producto_id' => $item->producto_id
+                        ], 400);
+
+                    }else{
+                        $inventario->save();
+                    }
+                    
 
                     // Actualizar existencias en otras unidades equivalentes si es necesario
                     $unidadesProducto = Inventario::where('producto_id', $inventario->producto_id)->get();
@@ -169,9 +185,119 @@ class DTEController extends Controller
             //Llamar el metodo para crear la factura
             $factura = $this->ventasController->descargarFactura($id);
             $contenidoPDF = $factura->getContent();
+            //contenido que llevara el json
+            $emisor = Emisor::where('id', 1)->first();
+            $cliente = Cliente::where('id', $venta->cliente_id)->first();
+            
             $jsonData = [
-                'data' => $dte,
-                'detalle' => $detalle
+                [
+                    'identificacion' => [
+                        'version' => $version,
+                        'ambiente' => $dte->ambiente,
+                        'tipoDte' => $dte->tipo_documento,
+                        'numeroControl' => $dte->numero_control,
+                        'codigoGeneracion' => $dte->codigo_generacion,
+                        'tipoModelo' => $dte->modelo_facturacion,
+                        'tipoOperacion' => $dte->tipo_transmision,
+                        'tipoContingencia' => $dte->tipo_contingencia || null,
+                        'motivoContin' => $dte->motivo_contingencia || null,
+                        'fecEmi' => $dte->fecha,
+                        'horEmi' => $dte->hora,
+                        'tipoMoneda' => 'USD'
+                    ],
+                    'documentoRelacionado' => null,
+                    'emisor' => [
+                        'nit' => $emisor->nit,
+                        'nrc' => $emisor->nrc,
+                        'nombre' => $emisor->nombre,
+                        'codActividad' => $emisor->actividad_economica,
+                        'descActividad' => $emisor->actividad_economica,
+                        'nombreComercial' => $emisor->nombre_comercial || null,
+                        'tipoEstablecimiento' => '02',
+                        'direccion' => [
+                            'departamento' => $emisor->departamento_id,
+                            'municipio' => $emisor->municipio_id,
+                            'complemento' => $emisor->direccion
+                        ],
+                        'telefono' => $emisor->telefono,
+                        'codEstableMH' => null,
+                        'codEstable' => null,
+                        'codPuntoVentaMH' => null,
+                        'codPuntoVenta' => null,
+                        'correo' => $emisor->correo
+                    ],
+                    'receptor' => [
+                        'tipoDocumento' =>$cliente->numeroDocumento,
+                        'nrc' => $cliente->nrc || null,
+                        'nombre' => $cliente->nombres . ' ' . $cliente->apellidos,
+                        'codActividad' => $cliente->economic_activity_id || null,
+                        'descActividad' => $cliente->economic_activity_id || null,
+                        'direccion' => [
+                            'departamento' => $cliente->department_id,
+                            'municipio' => $cliente->municipality_id,
+                            'complemento' => $cliente->direccion
+                        ],
+                        'telefono' => $cliente->telefono || null,
+                        'correo' => $cliente->correoElectronico
+                    ],
+                    'otrosDocumentos' => null,
+                    'ventaTercero' => null,
+                    'cuerpoDocumento' => [
+                        [
+                            'numItem' => 1,
+                            'tipoItem' => 1,
+                            'numeroDocumento' => null,
+                            'cantidad' => $detalle[0]->cantidad,
+                            'codigo' => $detalle[0]->producto->producto_id,
+                            'codTributo' => null,
+                            'uniMedida' => $detalle[0]->producto->unidad_medida_id,
+                            'descripcion' => $detalle[0]->producto->producto_id,
+                            'precioUni' => $detalle[0]->total_gravadas,
+                            'montoDescu' => 0,
+                            'ventaNoSuj' => 0,
+                            'ventaExenta' => $detalle[0]->total_exentas,
+                            'ventaGravada' => $detalle[0]->total_pagar,
+                            'tributos' => null,
+                            'psv' => 0,
+                            'noGravado' => 0,
+                            'ivaItem' => $detalle[0]->total_iva,
+                        ]
+                    ],
+                    'resumen' => [
+                        'totalNoSuj' => 0,
+                        'totalExenta' => 0,
+                        'totalGravada' => 3,
+                        'subTotalVentas' => 3,
+                        'descuNoSuj' => 0,
+                        'descuExenta' => 0,
+                        'descuGravada' => 0,
+                        'porcentajeDescuento' => 0,
+                        'totalDescu' => 0,
+                        'tributos' => [],
+                        'subTotal' => 3,
+                        'ivaRete1' => 0,
+                        'reteRenta' => 0,
+                        'montoTotalOperacion' => 3,
+                        'totalNoGravado' => 0,
+                        'totalPagar' => 3,
+                        'totalLetras' => 'TRES 00 /100',
+                        'totalIva' => 0.34,
+                        'saldoFavor' => 0,
+                        'condicionOperacion' => 1,
+                        'pagos' => [
+                            [
+                                'codigo' => '01',
+                                'montoPago' => 3,
+                                'referencia' => null,
+                                'plazo' => null,
+                                'periodo' => null
+                            ]
+                        ],
+                        'numPagoElectronico' => ''
+                    ],
+                    'extension' => null,
+                    'apendice' => null
+                ]
             ];
             //Envio del correo
             $cliente = Cliente::where('id', $dte->ventas->cliente_id)->first();

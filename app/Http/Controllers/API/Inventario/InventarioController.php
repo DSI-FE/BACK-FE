@@ -208,7 +208,7 @@ class InventarioController extends Controller
     {
         // Obtener inventarios por id
         $inventarios = Inventario::with(['producto', 'unidad'])
-            ->where('id', $codigo)
+            ->where('producto_id', $codigo)
             ->get();
 
         if ($inventarios->isEmpty()) {

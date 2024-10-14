@@ -48,7 +48,7 @@ class ClientesController extends Controller
         $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
 
         // Esto es para obtener todos los clientes junto con sus relaciones utilizando Eloquent ORM
-        $clientes = Cliente::with(['department', 'municipality', 'economicActivity'])
+        $clientes = Cliente::with(['department', 'municipality', 'economicActivity', 'identificacion'])
         ->where(function (Builder $query) use ($search) {
             return $query->where('cliente.nombres', 'like', '%' . $search . '%')
             ->orWhere('cliente.apellidos', 'like', '%' . $search . '%')
@@ -72,7 +72,7 @@ class ClientesController extends Controller
 
     public function show($id)
     {
-        $clientes = Cliente::with(['department', 'municipality', 'economicActivity'])->find($id);
+        $clientes = Cliente::with(['department', 'municipality', 'economicActivity', 'identificacion'])->find($id);
 
         if (!$clientes) {
             return response()->json([
@@ -126,9 +126,9 @@ class ClientesController extends Controller
     {
         // Validar los datos de entrada
         $validatedData = $request->validate([
-            'codigo' => 'required|string|max:50',
             'nombres' => 'required|string|max:100',
             'apellidos' => 'required|string|max:100',
+            'tipoIdentificacion' => 'required|max:50',
             'numeroDocumento' => 'required|string|max:20',
             'direccion' => 'nullable|string|max:255',
             'nrc' => 'nullable|string|max:50',

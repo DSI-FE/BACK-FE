@@ -23,9 +23,9 @@ class Cliente extends Model
 
     // Campos que se pueden asignar de forma masiva
     protected $fillable = [
-        'codigo',
         'nombres',
         'apellidos',
+        'tipoIdentificacion',
         'numeroDocumento',
         'direccion',
         'nrc',
@@ -73,6 +73,9 @@ class Cliente extends Model
     public function economicActivity()
     {
         return $this->belongsTo('App\Models\Clientes\ActividadEconomica', 'economic_activity_id');
+    }
+    public function identificacion(){
+        return $this->belongsTo('App\Models\DTE\Identificacion', 'tipoIdentificacion');
     }
 
     // Atributo para obtener el nombre del departamento

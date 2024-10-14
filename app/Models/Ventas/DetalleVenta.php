@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class DetalleVenta extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory;
 
     // Nombre de la tabla
     protected $table = 'detalle_venta';
@@ -39,7 +39,6 @@ class DetalleVenta extends Model
     public $hidden = [
         'created_at',
         'updated_at',
-        'deleted_at',
     ];
 
     //Definir la relacion con la Venta

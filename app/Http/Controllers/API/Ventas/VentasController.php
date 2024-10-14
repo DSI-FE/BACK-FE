@@ -4,26 +4,16 @@ namespace App\Http\Controllers\API\Ventas;
 
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use App\Mail\MiCorreo;
-use App\Models\Clientes\Cliente;
 use App\Models\Ventas\Venta;
 use Illuminate\Support\Facades\Validator;
 use App\Models\Inventarios\Inventario;
 use App\Models\DTE\DTE;
 use App\Models\DTE\Emisor;
-use App\Models\Productos\UnidadMedida;
 use App\Models\Ventas\DetalleVenta;
 //use BaconQrCode\Encoder\QrCode;
 use Illuminate\Support\Facades\DB;
-use Exception;
-use File;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use NumberToWords\NumberToWords;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
-use Storage;
-use TCPDF;
-use TCPDF_COLORS;
+
 
 class VentasController extends Controller
 {
@@ -302,7 +292,7 @@ class VentasController extends Controller
             }
 
             // Eliminar los detalles de venta asociados
-            DetalleVenta::where('venta_id', $venta->id)->delete();
+            DetalleVenta::where('venta_id', $venta->id)->forcedelete();
 
             if ($venta->estado == "Finalizada") {
                 return response()->json([
@@ -345,7 +335,8 @@ class VentasController extends Controller
             ->where('id', 1)->first();
 
         //imagen
-        $imagePath = public_path('storage/logos/IFLOSERSA.png');
+        $imagePath = storage_path('app/public/logos/IFLOSERSA.png');
+        
 
         //convertir el total a letras
         $numeroLetras = new NumberToWords();
@@ -363,7 +354,7 @@ class VentasController extends Controller
             2 => (object)['codigo' => '01', 'nombre' => 'Modo producción']
         ];
         $codigoAmbiente = isset($ambientes[$dte->ambiente]) ? $ambientes[$dte->ambiente]->codigo : null;
-        //URL que va a contener el pdf
+        //URL que va a contener el qr
         $url = 'https://admin.factura.gob.sv/consultaPublica?ambiente=' . $codigoAmbiente . '&codGen=' . $dte->codigo_generacion . '&fechaEmi=' . $dte->fecha;
 
         //Diseño del pdf
@@ -372,8 +363,8 @@ class VentasController extends Controller
         $pdf->writeHTML('<h3 style="text-align: center; font-size: 13px; font-family: \'Times New Roman\', Times, serif;">DOCUMENTO TRIBUTARIO ELECTRONICO</h3>');
         $pdf->writeHTML('<h3 style="text-align: center; font-size: 13px; font-family: \'Times New Roman\', Times, serif;">' . $dte->tipo->nombre . '</h3>');
         // Generar el código QR en el centro
-        $pdf->writeHTML('<img src="' . $imagePath . '" alt="Logo IFLOSERSA" width="150" />');
-        $pdf->write2DBarcode($url, 'QRCODE,H', 100, 23, 25, 25, array('border' => false), 'N');
+        $pdf->writeHTML('<img src="' . $imagePath . '" alt="Logo IFLOSERSA" width="175" />');
+        $pdf->write2DBarcode($url, 'QRCODE,H', 93, 23, 25, 25, array('border' => false), 'N');
         
         // Definir el contenido de la tabla
         $tablaDTE = '
