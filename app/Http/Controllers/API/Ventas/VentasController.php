@@ -13,24 +13,69 @@ use App\Models\Ventas\DetalleVenta;
 //use BaconQrCode\Encoder\QrCode;
 use Illuminate\Support\Facades\DB;
 use NumberToWords\NumberToWords;
-
+use App\Helpers\StringsHelper;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\Rule;
 
 class VentasController extends Controller
 {
 
     //Funcion para obtener todas las ventas
-    public function index()
-    {
-        // Obtener todas las ventas
-        $ventas = Venta::with('cliente', 'condicion', 'tipo_documento')->get();
+    public function index(Request $request)
+{
+    // Reglas de validación para los parámetros de consulta
+    $rules = [
+        'search' => ['nullable', 'max:250'],
+        'perPage' => ['nullable', 'integer', 'min:1'],
+        'sort' => ['nullable'],
+        'sort.key' => ['nullable', Rule::in(['id', 'created_at', 'cliente_id', 'total'])],
+        'sort.order' => ['nullable', Rule::in(['asc', 'desc'])],
+    ];
 
-        // Devolver la respuesta en formato JSON con un mensaje y los datos
-        return response()->json([
-            'message' => 'lista de ventas',
-            'data' => $ventas,
-        ], 200);
+    $messages = [
+        'search.max' => 'El criterio de búsqueda enviado excede la cantidad máxima permitida.',
+        'perPage.integer' => 'Solicitud de cantidad de registros por página con formato irreconocible.',
+        'perPage.min' => 'La cantidad de registros por página no puede ser menor a 1.',
+        'sort.key.in' => 'El valor de clave de ordenamiento es inválido.',
+        'sort.order.in' => 'El valor de ordenamiento es inválido.',
+    ];
+
+    // Validar los parámetros de consulta
+    $validator = Validator::make($request->all(), $rules, $messages);
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
     }
 
+    // Obtener los parámetros de consulta
+    $search = StringsHelper::normalizarTexto($request->query('search', ''));
+    $perPage = $request->query('perPage', 5);
+
+    $sort = json_decode($request->input('sort'), true);
+    $orderBy = isset($sort['key']) && !empty($sort['key']) ? $sort['key'] : 'id';
+    $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
+
+    // Obtener las ventas con filtrado y ordenamiento
+    $ventas = Venta::with(['cliente', 'condicion', 'tipo_documento'])
+        ->where(function (Builder $query) use ($search) {
+            return $query->whereHas('cliente', function (Builder $q) use ($search) {
+                $q->where('nombres', 'like', '%' . $search . '%')
+                  ->orWhere('apellidos', 'like', '%' . $search . '%');
+            })
+            ->orWhere('total_pagar', 'like', '%' . $search . '%');
+        })
+        ->orderBy($orderBy, $orderDirection)
+        ->paginate($perPage);
+
+    // Preparar la respuesta en formato JSON
+    $response = $ventas->toArray();
+    $response['search'] = $request->query('search', '');
+    $response['sort'] = [
+        'orderBy' => $orderBy,
+        'orderDirection' => $orderDirection,
+    ];
+
+    return response()->json($response, 200);
+}
     //obtener una venta especifica
     public function detalleVenta($id)
     {
