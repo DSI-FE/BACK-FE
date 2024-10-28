@@ -4,6 +4,7 @@ namespace App\Models\Ventas;
 use App\Models\Clientes\Cliente;
 use App\Models\DTE\Condicion;
 use App\Models\DTE\TipoDocumento;
+use App\Models\DTE\TipoPago;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -35,7 +36,8 @@ class Venta extends Model
         'estado',
         'condicion',
         'tipo_documento',
-        'cliente_id'
+        'cliente_id',
+        'tipo_pago_id'
     ];
 
     protected $hidden = [
@@ -60,6 +62,11 @@ class Venta extends Model
     public function tipo_documento()
     {
        return $this->belongsTo(TipoDocumento::class, 'tipo_documento');
+    }
+    //Definir la relacion con los tipos de pago
+    public function tipo_pago()
+    {
+       return $this->belongsTo(TipoPago::class, 'tipo_pago_id');
     }
 
     // Atributo para obtener el nombre del cliente

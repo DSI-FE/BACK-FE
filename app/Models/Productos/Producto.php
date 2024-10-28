@@ -25,7 +25,8 @@ class Producto extends Model
 
     // Campos que se pueden asignar de forma masiva
     protected $fillable = [
-        'nombreProducto'
+        'nombreProducto',
+        'tipo_producto_id',
     ];
 
     public $hidden = [
@@ -38,6 +39,12 @@ class Producto extends Model
     public function inventario()
     {
         return $this->hasMany('App\Models\Inventarios\Inventario', 'producto_id');
+    }
+
+    // Definir relaciones con el tipo de producto   
+    public function tipoProducto()
+    {
+        return $this->belongsTo('App\Models\Productos\TipoProducto', 'tipo_producto_id');
     }
     
 

@@ -22,60 +22,68 @@ class VentasController extends Controller
 
     //Funcion para obtener todas las ventas
     public function index(Request $request)
-{
-    // Reglas de validación para los parámetros de consulta
-    $rules = [
-        'search' => ['nullable', 'max:250'],
-        'perPage' => ['nullable', 'integer', 'min:1'],
-        'sort' => ['nullable'],
-        'sort.key' => ['nullable', Rule::in(['id', 'created_at', 'cliente_id', 'total'])],
-        'sort.order' => ['nullable', Rule::in(['asc', 'desc'])],
-    ];
+    {
+        // Reglas de validación para los parámetros de consulta
+        $rules = [
+            'search' => ['nullable', 'max:250'],
+            'perPage' => ['nullable', 'integer', 'min:1'],
+            'sort' => ['nullable'],
+            'sort.key' => ['nullable', Rule::in(['id', 'created_at', 'cliente_id', 'total'])],
+            'sort.order' => ['nullable', Rule::in(['asc', 'desc'])],
+        ];
 
-    $messages = [
-        'search.max' => 'El criterio de búsqueda enviado excede la cantidad máxima permitida.',
-        'perPage.integer' => 'Solicitud de cantidad de registros por página con formato irreconocible.',
-        'perPage.min' => 'La cantidad de registros por página no puede ser menor a 1.',
-        'sort.key.in' => 'El valor de clave de ordenamiento es inválido.',
-        'sort.order.in' => 'El valor de ordenamiento es inválido.',
-    ];
+        $messages = [
+            'search.max' => 'El criterio de búsqueda enviado excede la cantidad máxima permitida.',
+            'perPage.integer' => 'Solicitud de cantidad de registros por página con formato irreconocible.',
+            'perPage.min' => 'La cantidad de registros por página no puede ser menor a 1.',
+            'sort.key.in' => 'El valor de clave de ordenamiento es inválido.',
+            'sort.order.in' => 'El valor de ordenamiento es inválido.',
+        ];
 
-    // Validar los parámetros de consulta
-    $validator = Validator::make($request->all(), $rules, $messages);
-    if ($validator->fails()) {
-        return response()->json(['errors' => $validator->errors()], 422);
-    }
+        // Validar los parámetros de consulta
+        $validator = Validator::make($request->all(), $rules, $messages);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
 
-    // Obtener los parámetros de consulta
-    $search = StringsHelper::normalizarTexto($request->query('search', ''));
-    $perPage = $request->query('perPage', 5);
+        // Obtener los parámetros de consulta
+        $search = StringsHelper::normalizarTexto($request->query('search', ''));
+        $perPage = $request->query('perPage', 5);
 
-    $sort = json_decode($request->input('sort'), true);
-    $orderBy = isset($sort['key']) && !empty($sort['key']) ? $sort['key'] : 'id';
-    $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
+        $sort = json_decode($request->input('sort'), true);
+        $orderBy = isset($sort['key']) && !empty($sort['key']) ? $sort['key'] : 'id';
+        $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
 
-    // Obtener las ventas con filtrado y ordenamiento
-    $ventas = Venta::with(['cliente', 'condicion', 'tipo_documento'])
-        ->where(function (Builder $query) use ($search) {
-            return $query->whereHas('cliente', function (Builder $q) use ($search) {
-                $q->where('nombres', 'like', '%' . $search . '%')
-                  ->orWhere('apellidos', 'like', '%' . $search . '%');
+        // Obtener las ventas con filtrado y ordenamiento
+        $ventas = Venta::with(['cliente', 'condicion', 'tipo_documento'])
+            ->where(function (Builder $query) use ($search) {
+                return $query->whereHas('cliente', function (Builder $q) use ($search) {
+                    $q->where('nombres', 'like', '%' . $search . '%')
+                        ->orWhere('apellidos', 'like', '%' . $search . '%');
+                })
+                    ->orWhere('total_pagar', 'like', '%' . $search . '%');
             })
-            ->orWhere('total_pagar', 'like', '%' . $search . '%');
-        })
-        ->orderBy($orderBy, $orderDirection)
-        ->paginate($perPage);
+            ->orderBy($orderBy, $orderDirection)
+            ->paginate($perPage);
 
-    // Preparar la respuesta en formato JSON
-    $response = $ventas->toArray();
-    $response['search'] = $request->query('search', '');
-    $response['sort'] = [
-        'orderBy' => $orderBy,
-        'orderDirection' => $orderDirection,
-    ];
+        // Recorrer las ventas para obtener el DTE asociado
+        $ventasConDTE = $ventas->map(function ($venta) {
+            $dte = DTE::where('id_venta', $venta->id)->first();
+            $venta->codigo_generacion = $dte->codigo_generacion ?? '';
+        });
 
-    return response()->json($response, 200);
-}
+
+
+        // Preparar la respuesta en formato JSON
+        $response = $ventas->toArray();
+        $response['search'] = $request->query('search', '');
+        $response['sort'] = [
+            'orderBy' => $orderBy,
+            'orderDirection' => $orderDirection,
+        ];
+
+        return response()->json($response, 200);
+    }
     //obtener una venta especifica
     public function detalleVenta($id)
     {
@@ -149,6 +157,7 @@ class VentasController extends Controller
                 'condicion' => $request->condicion,
                 'tipo_documento' => $request->tipo_documento,
                 'cliente_id' => $request->cliente_id,
+                'tipo_pago_id' => 1
             ]);
             $detalleVentas = [];
 
@@ -168,23 +177,6 @@ class VentasController extends Controller
                         'venta_id' => $venta->id,
                         'producto_id' => $unidadSeleccionada['id']
                     ]);
-
-                    /*     // Disminuir las existencias de la unidad de medida seleccionada
-                    $unidadSeleccionada->existencias -= $detalleVenta->cantidad;
-                    $unidadSeleccionada->save();
-
-                    // Actualizar las existencias de otras unidades de medida del mismo producto
-                    $unidadesProducto = Inventario::where('producto_id', $producto['producto_id'])->get();
-                    foreach ($unidadesProducto as $unidad) {
-                        if ($unidad->unidad_medida_id != $unidadSeleccionada->unidad_medida_id) {
-                            if ($unidadSeleccionada->equivalencia > 1) {
-                                $unidad->existencias = $unidadSeleccionada->existencias / $unidadSeleccionada->equivalencia * $unidad->equivalencia;
-                            } else {
-                                $unidad->existencias = $unidadSeleccionada->existencias * $unidad->equivalencia;
-                            }
-                            $unidad->save();
-                        }
-                    }*/
 
                     $detalleVentas[] = $detalleVenta;
                 } else {
@@ -369,7 +361,7 @@ class VentasController extends Controller
     {
 
         // Obtener el DTE junto con su venta asociada
-        $dte = DTE::with('ventas',  'ambiente', 'moneda', 'tipo')->where('id_venta', $id)->first();
+        $dte = DTE::with('ventas',  'ambiente', 'moneda', 'tipo', 'tipoTransmision', 'modeloFacturacion')->where('id_venta', $id)->first();
 
         // Obtener los detalles de la venta
         $detalle = DetalleVenta::with('producto')
@@ -381,7 +373,8 @@ class VentasController extends Controller
 
         //imagen
         $imagePath = storage_path('app/public/logos/IFLOSERSA.png');
-        
+        $anuladaPath = storage_path('app/public/logos/anulado.png');
+
 
         //convertir el total a letras
         $numeroLetras = new NumberToWords();
@@ -403,14 +396,31 @@ class VentasController extends Controller
         $url = 'https://admin.factura.gob.sv/consultaPublica?ambiente=' . $codigoAmbiente . '&codGen=' . $dte->codigo_generacion . '&fechaEmi=' . $dte->fecha;
 
         //Diseño del pdf
-        $pdf = new \TCPDF();
+        $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8', false);
         $pdf->AddPage();
+        // Definir el color del borde (RGB)
+        $pdf->SetDrawColor(220, 220, 220);
+
+        // Dibujar un rectángulo alrededor de la página
+        $borderMargin = 5; // Margen del borde
+        $pdf->Rect($borderMargin, $borderMargin, $pdf->getPageWidth() - 2 * $borderMargin, $pdf->getPageHeight() - 2 * $borderMargin, 'D');
+
+        if ($dte->ventas->estado == "Anulada") {
+            //marca de agua por si es factura anulada
+            $pdf->SetAlpha(0.5);
+            // Añadir la imagen como marca de agua (centro de la página)
+            $pdf->Image($anuladaPath, 30, 50, 150, 150, '', '', '', false, 300, '', false, false, 0);
+
+            // Restablecer la transparencia
+            $pdf->SetAlpha(1);
+        }
+
         $pdf->writeHTML('<h3 style="text-align: center; font-size: 13px; font-family: \'Times New Roman\', Times, serif;">DOCUMENTO TRIBUTARIO ELECTRONICO</h3>');
         $pdf->writeHTML('<h3 style="text-align: center; font-size: 13px; font-family: \'Times New Roman\', Times, serif;">' . $dte->tipo->nombre . '</h3>');
         // Generar el código QR en el centro
         $pdf->writeHTML('<img src="' . $imagePath . '" alt="Logo IFLOSERSA" width="175" />');
         $pdf->write2DBarcode($url, 'QRCODE,H', 93, 23, 25, 25, array('border' => false), 'N');
-        
+
         // Definir el contenido de la tabla
         $tablaDTE = '
 <table border="0" cellspacing="2" cellpadding="2" width="100%; ">
@@ -421,8 +431,8 @@ class VentasController extends Controller
             <p>Sello de recepción: <br>' . $dte->sello_recepcion . '</p>
         </td>
         <td style="text-align: left; width: 55%; font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
-            <p>Modelo de facturación: <br>Modelo facturación previo</p>
-            <p>Tipo de transmisión: <br>Transmisión normal</p>
+            <p>Modelo de facturación: <br>'. $dte->modeloFacturacion->nombre.'</p>
+            <p>Tipo de transmisión: <br>'. $dte->tipoTransmision->nombre.'</p>
             <p>Fecha y hora de generación: <br>' . $dte->fecha . ' ' . $dte->hora . '</p>
         </td>
     </tr>
@@ -438,7 +448,7 @@ class VentasController extends Controller
         <th style="text-align: center; border: 1px solid gray;  height: 25px; background-color: #DCDCDC; font-size: 12px;"><strong>Emisor</strong></th>
     </tr>
     <tr>
-       <td style="font-family: \'Times New Roman\', Times, serif; font-weight: bold; font-size: 14px;">' . $emisor->nombre . '</td>
+       <td style="font-family: \'Times New Roman\', Times, serif; font-weight: bold; font-size: 12px;">' . $emisor->nombre . '</td>
 
     </tr>
     <tr>
@@ -460,7 +470,7 @@ class VentasController extends Controller
        <td>Correo electrónico: ' . $emisor->correo . '</td>
     </tr>
     <tr>
-       <td>Tipo de establecimiento: CASA MATRIZ</td>
+       <td>Tipo de establecimiento:'. $emisor->establecimiento->valores.'</td>
     </tr>
 </table>';
 
@@ -471,7 +481,7 @@ class VentasController extends Controller
          <th style="text-align: center; border: 1px solid gray;  height: 25px; background-color: #DCDCDC;  font-size: 12px;"><strong>Receptor</strong></th>
     </tr>
     <tr>
-         <th style="font-family: \'Times New Roman\', Times, serif; font-weight: bold; font-size: 14px;">' . $dte->ventas->cliente_nombre . '</th>
+         <th style="font-family: \'Times New Roman\', Times, serif; font-weight: bold; font-size: 12px;">' . $dte->ventas->cliente_nombre . '</th>
     </tr>
     <tr>
          <th>Tipo de Documento: DUI</th>
@@ -511,57 +521,143 @@ class VentasController extends Controller
     </tr>';
         // Iteramos sobre el array para agregar los productos a la tabla
         $numero = 1;
-
+        $cantidades = 0;
+        $diesel = 0;
         // Iterar solo sobre los productos
         foreach ($detalle as $item) {
-            if ($dte->tipo_documento == 2) {
+            //Si es CCF y Diesel
+            if ($dte->tipo_documento == 2 && $item['producto']['producto']['combustible']) {
                 $tablaContenido .= '
             <tr style="font-size: 9px; ">
                  <td style="height: 15px">' . $numero++ . '</td>
                  <td>' . $item['cantidad'] . '</td>
                  <td>' . $item['producto']['nombre_producto'] . '</td>
                  <td>' . $item['producto']['unidad_medida'] . '</td>
-                 <td>$' . number_format($item['precio'] / 1.13, 2) . '</td>
+                 <td>$' . number_format(($item['precio'] - 0.30) / 1.13, 4) . '</td>
                  <td>$0.00</td>
                  <td>$0.00</td>
                  <td>$0.00</td>
-                 <td>$' . number_format($item['total'] / 1.13, 2) . '</td>
+                 <td>$' . number_format(($item['total'] - $item['cantidad'] * 0.30) / 1.13, 3) . '</td>
             </tr>';
-            } else {
+            }
+            if ($dte->tipo_documento == 1 && $item['producto']['producto']['combustible']) {
                 $tablaContenido .= '
             <tr style="font-size: 9px">
                  <td style="height: 15px">' . $numero++ . '</td>
                  <td>' . $item['cantidad'] . '</td>
                  <td>' . $item['producto']['nombre_producto'] . '</td>
                  <td>' . $item['producto']['unidad_medida'] . '</td>
-                 <td>$' . number_format($item['precio'], 2) . '</td>
+                 <td>$' . number_format($item['precio'] - 0.30, 2) . '</td>
                  <td>$0.00</td>
                  <td>$0.00</td>
                  <td>$0.00</td>
-                 <td>$' . number_format($item['total'], 2) . '</td>
+                 <td>$' . number_format($item['total'] - $item['cantidad'] * 0.3, 2) . '</td>
             </tr>';
+            }
+
+            //Si es CCF pero no es diesel
+            if ($dte->tipo_documento == 2 && !$item['producto']['producto']['combustible']) {
+                $tablaContenido .= '
+        <tr style="font-size: 9px; ">
+             <td style="height: 15px">' . $numero++ . '</td>
+             <td>' . $item['cantidad'] . '</td>
+             <td>' . $item['producto']['nombre_producto'] . '</td>
+             <td>' . $item['producto']['unidad_medida'] . '</td>
+             <td>$' . number_format($item['precio'] / 1.13, 4) . '</td>
+             <td>$0.00</td>
+             <td>$0.00</td>
+             <td>$0.00</td>
+             <td>$' . number_format($item['total'] / 1.13, 2) . '</td>
+        </tr>';
+            }
+            if ($dte->tipo_documento == 1 && !$item['producto']['producto']['combustible']) {
+                $tablaContenido .= '
+        <tr style="font-size: 9px">
+             <td style="height: 15px">' . $numero++ . '</td>
+             <td>' . $item['cantidad'] . '</td>
+             <td>' . $item['producto']['nombre_producto'] . '</td>
+             <td>' . $item['producto']['unidad_medida'] . '</td>
+             <td>$' . number_format($item['precio'], 2) . '</td>
+             <td>$0.00</td>
+             <td>$0.00</td>
+             <td>$0.00</td>
+             <td>$' . number_format($item['total'], 2) . '</td>
+        </tr>';
+            }
+            //SI ES FACTURA SUJETO EXCLUIDO
+            if ($dte->tipo_documento == 3) {
+                $tablaContenido .= '
+        <tr style="font-size: 9px">
+             <td style="height: 15px">' . $numero++ . '</td>
+             <td>' . $item['cantidad'] . '</td>
+             <td>' . $item['producto']['nombre_producto'] . '</td>
+             <td>' . $item['producto']['unidad_medida'] . '</td>
+             <td>$' . number_format($item['precio'], 2) . '</td>
+             <td>$0.00</td>
+             <td>$0.00</td>
+             <td>$0.00</td>
+             <td>$' . number_format($item['total'], 2) . '</td>
+        </tr>';
+            }
+
+
+            //calculos
+            $cantidades += $item['cantidad'];
+            if ($item['producto']['producto']['combustible']) {
+                $diesel = 1;
             }
         }
 
+        //PARTE DEL RESUMEN DE VENTAS
         // Colocar la suma de ventas después del foreach
-        if ($dte->tipo_documento == 2) {
+        if ($dte->tipo_documento == 2 && $item['producto']['producto']['combustible']) {
             $tablaContenido .= '
             <hr>
             <tr>
                 <td colspan="8" style="text-align: right;">Suma de ventas:</td>
-                <td colspan="1">$ ' . $dte->ventas->total_gravadas . '</td>
+                <td colspan="1">$ ' . number_format(($dte->ventas->total_pagar - $cantidades * 0.30) / 1.13, 2)  . '</td>
             </tr>';
-        } else {
+        }
+        if ($dte->tipo_documento == 1 && $item['producto']['producto']['combustible']) {
             $tablaContenido .= '
             <hr>
             <tr>
                 <td colspan="8" style="text-align: right;">Suma de ventas:</td>
-                <td colspan="1">$ ' . $dte->ventas->total_pagar . '</td>
+                <td colspan="1">$ ' . number_format(($dte->ventas->total_pagar - $cantidades * 0.30), 2) . '</td>
+            </tr>';
+        }
+        if ($dte->tipo_documento == 2 && !$item['producto']['producto']['combustible']) {
+            $tablaContenido .= '
+            <hr>
+            <tr>
+                <td colspan="8" style="text-align: right;">Suma de ventas:</td>
+                <td colspan="1">$ ' . number_format($dte->ventas->total_pagar / 1.13, 2)  . '</td>
+            </tr>';
+        }
+        if ($dte->tipo_documento == 1 && !$item['producto']['producto']['combustible']) {
+            $tablaContenido .= '
+            <hr>
+            <tr>
+                <td colspan="8" style="text-align: right;">Suma de ventas:</td>
+                <td colspan="1">$ ' . number_format($dte->ventas->total_pagar, 2) . '</td>
+            </tr>';
+        }
+        //SI ES SUJETO EXCLUIDO
+        if ($dte->tipo_documento == 3) {
+            $tablaContenido .= '
+            <hr>
+            <tr>
+                <td colspan="8" style="text-align: right;">Suma de ventas:</td>
+                <td colspan="1">$ ' . number_format($dte->ventas->total_pagar, 2)  . '</td>
             </tr>';
         }
 
+
+
         // Añadir el resto del contenido
-        $tablaContenido .= '
+        if ($dte->tipo_documento != 3) {
+            $tablaContenido .= '';
+            $tablaContenido .= '
         <tr>
             <td colspan="8" style="text-align: right;">Monto global Desc., Rebajas y otros a ventas no sujetas:</td>
             <td colspan="1">$ 0.00</td>
@@ -574,41 +670,92 @@ class VentasController extends Controller
             <td colspan="8" style="text-align: right;">Monto global Desc., Rebajas y otros a ventas Gravadas:</td>
             <td colspan="1">$ 0.00</td>
         </tr>';
+        }
+        // Calcular y mostrar subtotal e IVA según el tipo de documento y combustible
+        if ($dte->tipo_documento == 2 && $item['producto']['producto']['combustible']) {
+            $subtotal = number_format(($dte->ventas->total_pagar - $cantidades * 0.30) / 1.13, 2);
+            $iva = number_format(($dte->ventas->total_pagar - $cantidades * 0.30) / 1.13 * 0.13, 2);
+            $tablaContenido .= '
+    <tr>
+        <td colspan="8" style="text-align: right;">Subtotal:</td>
+        <td colspan="1">$ ' . $subtotal . '</td>
+    </tr>
+    <tr>
+        <td colspan="8" style="text-align: right;">IVA:</td>
+        <td colspan="1">$ ' . $iva . '</td>
+    </tr>';
+        }
 
-        if ($dte->tipo_documento == 2) {
+        if ($dte->tipo_documento == 1 && $item['producto']['producto']['combustible']) {
+            $subtotal = number_format(($dte->ventas->total_pagar - $cantidades * 0.30), 2);
+            $tablaContenido .= '
+    <tr>
+        <td colspan="8" style="text-align: right;">Subtotal:</td>
+        <td colspan="1">$ ' . $subtotal . '</td>
+    </tr>';
+        }
+
+        if ($dte->tipo_documento == 2 && !$item['producto']['producto']['combustible']) {
+            $subtotal = number_format(($dte->ventas->total_pagar) / 1.13, 2);
+            $iva = number_format(($dte->ventas->total_pagar / 1.13) * 0.13, 2);
+            $tablaContenido .= '
+    <tr>
+        <td colspan="8" style="text-align: right;">Subtotal:</td>
+        <td colspan="1">$ ' . $subtotal . '</td>
+    </tr>
+    <tr>
+        <td colspan="8" style="text-align: right;">IVA:</td>
+        <td colspan="1">$ ' . $iva . '</td>
+    </tr>';
+        }
+
+        if ($dte->tipo_documento == 1 && !$item['producto']['producto']['combustible']) {
+            $subtotal = number_format($dte->ventas->total_pagar, 2);
+            $tablaContenido .= '
+    <tr>
+        <td colspan="8" style="text-align: right;">Subtotal:</td>
+        <td colspan="1">$ ' . $subtotal . '</td>
+    </tr>';
+        }
+
+
+        if ($diesel) {
+            $tablaContenido .= '
+            <tr>
+                <td colspan="8" style="text-align: right;">FOVIAL ($0.20 Ctvs. por galón):</td>
+                <td colspan="1">$ ' . number_format($cantidades * 0.20, 2) . '</td>
+            </tr>
+            <tr>
+                <td colspan="8" style="text-align: right;">COTRANS ($0.10 Ctvs. por galón):</td>
+                <td colspan="1">$ ' . number_format($cantidades * 0.10, 2) . '</td>
+            </tr>';
+        }
+
+        if ($dte->tipo_documento != 3) {
             $tablaContenido .= '
         <tr>
-            <td colspan="8" style="text-align: right;">Subtotal:</td>
-            <td colspan="1">$ ' . $dte->ventas->total_gravadas . '</td>
-        </tr>
-        <tr>
-            <td colspan="8" style="text-align: right;">IVA:</td>
-            <td colspan="1">$ ' . $dte->ventas->total_iva . '</td>
-        </tr>';
-        } else {
-            $tablaContenido .= '
-        <tr>
-            <td colspan="8" style="text-align: right;">Subtotal:</td>
-            <td colspan="1">$ ' . $dte->ventas->total_pagar . '</td>
+            <td colspan="8" style="text-align: right;">IVA Retenido:</td>
+            <td colspan="1">$ 0.00</td>
         </tr>';
         }
 
         $tablaContenido .= '
         <tr>
-            <td colspan="8" style="text-align: right;">IVA Retenido:</td>
-            <td colspan="1">$ 0.00</td>
-        </tr>
-        <tr>
             <td colspan="8" style="text-align: right;">Retención de renta:</td>
             <td colspan="1">$ 0.00</td>
-        </tr>
+        </tr>';
+
+        if ($dte->tipo_documento != 3) {
+            $tablaContenido .= '
         <tr>
             <td colspan="8" style="text-align: right;">Monto total de la operación:</td>
             <td colspan="1">$ 0.00</td>
-        </tr><br>
+        </tr><br>';
+        }
+        $tablaContenido .= '
         <tr>
             <td colspan="8" style="text-align: right;">Total a pagar:</td>
-            <td colspan="1"><strong>$ ' . $dte->ventas->total_pagar . '</strong></td>
+            <td colspan="1"><strong>$ ' . number_format($dte->ventas->total_pagar, 2) . '</strong></td>
         </tr><hr>
         <tr>
             <td colspan="9" style="text-align: left; background-color: #DCDCDC; height: 25px;">VALOR EN LETRAS:  ' . $totalEnLetras . '</td>
@@ -616,6 +763,8 @@ class VentasController extends Controller
 
         $tablaContenido .= '
 </table>';
+
+
 
 
         // Escribir la tabla del Emisor (a la izquierda)
@@ -628,6 +777,6 @@ class VentasController extends Controller
         $pdf->writeHTMLCell('', '', '', '', $tablaContenido, 0, 1, 0, true, 'L', true);
 
         return response($pdf->Output('Factura_' . $dte->codigo_generacion . '.pdf', 'S'))
-        ->header('Content-Type', 'application/pdf');
+            ->header('Content-Type', 'application/pdf');
     }
 }
