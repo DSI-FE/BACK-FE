@@ -208,20 +208,147 @@ class ReportesController extends Controller
         ->whereMonth('compras.fecha', $mes)
         ->get();
 
+        // Convertir el número del mes a texto
+        $mesNombre = [
+            1 => 'Enero',
+            2 => 'Febrero',
+            3 => 'Marzo',
+            4 => 'Abril',
+            5 => 'Mayo',
+            6 => 'Junio',
+            7 => 'Julio',
+            8 => 'Agosto',
+            9 => 'Septiembre',
+            10 => 'Octubre',
+            11 => 'Noviembre',
+            12 => 'Diciembre',
+        ];
+
         //Obtenemos las compras del mes
 
         $pdf = new TCPDF();
+
+        $emisor = Emisor::first();
+
         $pdf->AddPage();
         $pdf->setPageOrientation('L');
-        $pdf->writeHTML('<h2>NombreEmpresa</h2>', 0, 0, 0, 0, 'C');
-        $pdf->writeHTML('<h2>Libro de compras</h2>', 0, 0, 0, 0, 'C');
-        $pdf->writeHTML('<p>DATA: '.$compras.'</p>');
+        $pdf->writeHTML('<h2>' . $emisor->nombre_comercial . '</h2>, ', 0, 0, 0, 0, 'C');
+        $pdf->writeHTML('<h2>Libro de compras</h2> <br>', 0, 0, 0, 0, 'C');
 
+        // Crear una tabla con dos columnas
+        $pdf->Cell(70, 5, 'Contribuyente: '. $emisor->nombre, 0, 0, 'L'); // Alineado a la izquierda
+        $pdf->Ln();
+        $pdf->Cell(60, 5, 'NIT: ' . $emisor->nit, 0, 0, 'L');
+        $pdf->Cell(70, 5, 'MES: ' . $mesNombre[$mes] ?? 'N.A Mes inválido', 0, 0, 'C');
+        $pdf->Cell(60, 5, 'AÑO: ' . $anio, 0, 0, 'C');
+        $pdf->Cell(70, 5, 'NRC: ' . $emisor->nrc, 0, 0, 'R');
+        $pdf->Ln();
+        $pdf->Ln();
+
+        //$pdf->writeHTML('<p>DATA: '.$compras.'</p>');
+        
+        //Imprimir tabla
+        $tabla = '
+        <table  border="0" cellpading="0" cellspacing="0" style="border-collapse: collapse; width: 100%;" >
+            <thead>
+                <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
+                    <th rowspan="2" style="border: 1px solid black; width: 30px; font-size: 10px">Corr</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 63px; font-size: 10px">Fecha</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 105px; font-size: 10px">No. de CCF</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 50px; font-size: 10px">N.R.C</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 185px; font-size: 10px">Proveedor</th>
+
+                    <th colspan="3" style="border: 1px solid black; align: center; width: 93px; height: 15px; font-size: 10px">Compras exentas</th>
+                    
+                    <th colspan="3" style="border: 1px solid black; align: center; width: 158; font-size: 10px">Compras gravadas</th>
+
+                    <th rowspan="2" style="border: 1px solid black; width: 53px; font-size: 10px">IVA percibido</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 60px; font-size: 10px">Total</th>
+
+                </tr>
+                <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
+                    <th style="border: 1px solid black; text-align: center; width: 53px; font-size: 10px">Internas</th>
+                    <th style="border: 1px solid black; text-align: center; width: 40px; font-size: 10px">Internaciones</th>
+
+                    <th style="border: 1px solid black; text-align: center; width: 65px;font-size: 10px">Internas</th>
+                    <th style="border: 1px solid black; text-align: center; width: 40px;font-size: 10px">Impor</th>
+                    <th style="border: 1px solid black; text-align: center; width: 53px;font-size: 10px">IVA C.F.</th>
+                </tr>
+            </thead>
+            <tbody>';
+
+        //contador
+        $numero = 1;
+        //variables para guardar las sumas
+        $sumaGravadas = 0;
+        $sumaIvaCompra = 0;
+        $sumaIvaPercibido = 0;
+        $sumaTotalCompra = 0;
+        $sumaTotalCompraExenta = 0;
+        // Iterar para mostrar cada compra en la tabla
+        foreach ($compras as $item) {
+            $sumaGravadas += $item->comprasGravadas;
+            $sumaIvaCompra += $item -> ivaCompra;
+            $sumaIvaPercibido += $item -> ivaPercibido;
+            $sumaTotalCompra += $item->totalCompra;
+            $sumaTotalCompraExenta += $item->comprasExentas;
+
+            $tabla .= 
+            '<tr style="font-size: 12px; border: 1px dotted gray; font-size: 9px">
+                <td style="border: 1px dotted gray; width: 30px;">' . $numero++ . '</td>
+                <td style="border: 1px dotted gray; width: 63px; ">' . $item->fecha . '</td>
+                <td style="border: 1px dotted gray; width: 105px;">' . $item->numeroCCF . '</td>
+                <td style="border: 1px dotted gray; width: 50px;">' . $item->nrc . '</td>
+                <td style="border: 1px dotted gray; width: 185px;">' . $item->nombre . '</td>
+
+                <td style="border: 1px dotted gray; width: 53px;">$' . number_format($item->comprasExentas, 2) . '</td>
+                <td style="border: 1px dotted gray; width: 40px;">$' . "0.00" . '</td>
+
+                <td style="border: 1px dotted gray; width: 65px">$ ' . number_format($item->comprasGravadas, 2) . '</td>
+                <td style="border: 1px dotted gray; width: 40px">$ ' . "0.00". '</td>
+                <td style="border: 1px dotted gray; width: 53px">$ ' . number_format($item->ivaCompra, 2) . '</td>
+
+                <td style="border: 1px dotted gray; width: 53px">$ ' . number_format($item->ivaPercibido, 2) . '</td>
+                <td style="border: 1px dotted gray; width: 60px">$ ' . number_format($item->totalCompra, 2) . '</td>
+            </tr>';
+        }
+
+        // Añadir la fila de sumas al final de la tabla
+        $tabla .= '
+        <br>
+        <tr style="font-weight: bold; font-size: 10px;">
+            <td style="width: 433; height: 15px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black;">' . "SUMAS:" .'</td>
+
+            <td style="width: 53px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$' . number_format($sumaTotalCompraExenta , 2). '</td>
+            <td style="width: 40px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$' . "0.00" . '</td>
+
+            <td style="width: 65px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$ ' . number_format($sumaGravadas, 2) . '</td>
+            <td style="width: 40px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$' . "0.00" . '</td>
+            <td style="width: 56px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$ ' . number_format($sumaIvaCompra, 2) . '</td>
+            
+            <td style="width: 53px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$ ' . number_format($sumaIvaPercibido, 2) . '</td>
+            <td style="width: 60px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$ ' . number_format($sumaTotalCompra, 2) . '</td>
+        </tr>
+
+        </tbody></table>';
+
+
+        // Escribir la tabla en el PDF
+        $pdf->writeHTML($tabla, true, false, true, false, '');
+
+        //Espacio para firma del contador
+        $pdf->Ln(10);
+
+        $pdf->Cell(90, 5, '___________________________________', 0, 1, 'R');
+
+        //Nombre del contador
+        $pdf->Cell(75, 5, $emisor->contador, 0, 1, 'R');
 
         //Retorna el pdf
         return response($pdf->Output('Compras'  . '.pdf', 'S'))
             ->header('Content-Type', 'application/pdf');
     }
+
 
 
     //Retorna un excel con ventas a consumidor
