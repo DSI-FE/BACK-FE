@@ -145,30 +145,150 @@ class ReportesController extends Controller
     //Funcion para obtener el libro de ventas a contribuyente en pdf
     public function contribuyente($fechaInicio, $fechaFin)
     {
+        // Obtener la información del emisor
+        $emisor = Emisor::first();
         //data
         $ventas = DB::table('dte')
             ->select('dte.*', 'dte.fecha AS dte_fecha', 'ventas.*', 'cliente.nrc', 'cliente.nombres', 'cliente.apellidos')
             ->join('ventas', 'dte.id_venta', '=', 'ventas.id')
             ->join('cliente', 'ventas.cliente_id', '=', 'cliente.id')
             ->whereBetween('dte.fecha', [$fechaInicio, $fechaFin])
-            ->where('ventas.estado', 'Finalizada')
+            ->whereIn('ventas.estado', ['Finalizada', 'Anulada'])
             ->where('ventas.tipo_documento', 2)
             ->get();
 
-        /*Este reporte va ser casi identco al anterior, solo que cambiara el tipo de documento, ya so será 1, sino 2 
-         y cambiara el estilo del pdf*/
+        // Convertir la fecha de inicio para obtener mes y año
+        $fechaInicioCarbon = \Carbon\Carbon::parse($fechaInicio);
+        $anio = $fechaInicioCarbon->year;
+        $nombreMes = ucfirst($fechaInicioCarbon->translatedFormat('F'));
+
+        // Inicializar el PDF
         $pdf = new TCPDF();
-        $pdf->AddPage();
-        $pdf->setPageOrientation('L');
-        $pdf->writeHTML('<h2>Todo el contenido del pdf apartir de aqui</h2>');
-        $pdf->writeHTML('<p>DATA: ' . $ventas . '</p>');
+        $pdf->AddPage('L', 'A4');
+        $pdf->SetFont('Helvetica', '', 12);
 
+        // Título y encabezado del PDF
+        $pdf->writeHTML('<h2>' . $emisor->nombre_comercial . '</h2>, ', 0, 0, 0, 0, 'C');
+        $pdf->writeHTML('<h4>Libro de ventas a contribuyente</h4>, ', 0, 0, 0, 0, 'C');
+        $pdf->Ln(5);
 
+        // Encabezados adicionales
+        $pdf->Cell(70, 5, 'Mes: ' . $nombreMes, 0, 0, 'L');
+        $pdf->Cell(200, 5, 'Contribuyente: ' . $emisor->nombre, 0, 1, 'R');
+        $pdf->Cell(50, 5, 'Año: ' . $anio, 0, 0, 'L');
+        $pdf->Cell(145, 5, 'NRC: ' . $emisor->nrc, 0, 0, 'C');
+        $pdf->Cell(73, 5, 'NIT: ' . $emisor->nit, 0, 1, 'R');
+        $pdf->Ln(5);
 
-        //Retorna el pdf
-        return response($pdf->Output('Contribuyente'  . '.pdf', 'S'))
+        // Definir estructura de la tabla
+        $tabla = '
+    <table border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+        <thead>
+            <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
+                <th rowspan="2" style="border: 1px solid black; width: 35px">Corr.</th>
+                <th rowspan="2" style="border: 1px solid black; width: 65px">Fecha</th>
+                <th rowspan="2" style="border: 1px solid black; width: 130px">No. de CCF</th>
+                <th rowspan="2" style="border: 1px solid black; width: 60px">N.R.C</th>
+                <th rowspan="2" style="border: 1px solid black; width: 160px">Cliente</th>
+                <th colspan="3" style="border: 1px solid black; align: center; width: 200px">Ventas</th>
+                <th rowspan="2" style="border: 1px solid black; width: 65px">Impuesto Percibido</th>
+                <th rowspan="2" style="border: 1px solid black; width: 70px">Total</th>
+            </tr>
+            <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
+            <th style="border: 1px solid black; text-align: center; width: 60px">Exentas</th>
+            <th style="border: 1px solid black; text-align: center; width: 70px">Internas Gravadas</th>
+            <th style="border: 1px solid black; text-align: center; width: 70px">Debito Fiscal</th>
+        </tr>
+        </thead>
+        <tbody>';
+
+        // Inicializar acumuladores para los totales
+        $totalExentas = 0;
+        $totalGravadas = 0;
+        $totalDebitoFiscal = 0;
+        $totalImpuestoPercibido = 0;
+        $totalGeneral = 0;
+
+        // Generar filas de la tabla con datos
+        /*foreach ($ventas as $index => $venta) {
+            $totalExentas += $venta->total_exentas;
+            $totalGravadas += $venta->total_gravadas;
+            $totalDebitoFiscal += $venta->total_iva;
+            $totalImpuestoPercibido += 0.00;  // Columna de IMPUESTO PERCIBIDO es 0.00
+            $totalGeneral += $venta->total_pagar;*/
+
+             // Generar filas de la tabla con datos
+    foreach ($ventas as $index => $venta) {
+        $isAnulada = $venta->estado === 'Anulada';
+
+        // Determinar valores según el estado de la venta
+        $exentas = $isAnulada ? '$0.00' : '$ ' . number_format($venta->total_exentas, 2);
+        $gravadas = $isAnulada ? '$0.00' : '$ ' . number_format($venta->total_gravadas, 2);
+        $debitoFiscal = $isAnulada ? '$0.00' : '$ ' . number_format($venta->total_iva, 2);
+        $impuestoPercibido = '$0.00';
+        $total = $isAnulada ? '$0.00' : '$ ' . number_format($venta->total_pagar, 2);
+        $cliente = $venta->nombres . ' ' . $venta->apellidos;
+        
+        if ($isAnulada) {
+            $cliente .= ' **ANULADA**';
+        } else {
+            // Acumular solo si la venta no está anulada
+            $totalExentas += $venta->total_exentas;
+            $totalGravadas += $venta->total_gravadas;
+            $totalDebitoFiscal += $venta->total_iva;
+            $totalImpuestoPercibido += 0.00;  // Impuesto Percibido es 0.00
+            $totalGeneral += $venta->total_pagar;
+        }
+
+        $tabla .= '<tr style="font-size: 12px; border: 1px dotted gray; font-size: 11px;">
+        <td style="border: 1px dotted gray; width: 35px; height: 15px; text-align: center; vertical-align: bottom;">' . ($index + 1) . '</td>
+        <td style="border: 1px dotted gray; text-align: center; width: 65px">' . $venta->dte_fecha . '</td>
+        <td style="border: 1px dotted gray; text-align: center; width: 130px">' . $venta->codigo_generacion . '</td>
+        <td style="border: 1px dotted gray; text-align: center; width: 60px">' . ($venta->nrc ?? 'N/A') . '</td>
+        <td style="border: 1px dotted gray; text-align: left; width: 160px">' . $cliente . '</td>
+        <td style="border: 1px dotted gray; text-align: center; width: 60px">' . $exentas . '</td>
+        <td style="border: 1px dotted gray; text-align: center; width: 70px">' . $gravadas . '</td>
+        <td style="border: 1px dotted gray; text-align: center; width: 70px">' . $debitoFiscal . '</td>
+        <td style="border: 1px dotted gray; text-align: center; width: 65px">' . $impuestoPercibido . '</td>
+        <td style="border: 1px dotted gray; text-align: center; width: 70px">' . $total . '</td>
+    </tr>';
+        }
+
+        // Agregar fila de totales
+        $tabla .= '<tr style="font-weight: bold; text-align: right;">
+    <td colspan="5" style="border: 1px solid black; text-align: center;">TOTALES</td>
+    <td style="border: 1px solid black; text-align: center;">$ ' . number_format($totalExentas, 2) . '</td>
+    <td style="border: 1px solid black; text-align: center;">$ ' . number_format($totalGravadas, 2) . '</td>
+    <td style="border: 1px solid black; text-align: center;">$ ' . number_format($totalDebitoFiscal, 2) . '</td>
+    <td style="border: 1px solid black; text-align: center;">$ ' . number_format($totalImpuestoPercibido, 2) . '</td>
+    <td style="border: 1px solid black; text-align: center;">$ ' . number_format($totalGeneral, 2) . '</td>
+</tr>';
+
+        $tabla .= '</tbody></table>';
+
+        // Escribir la tabla en el PDF
+        $pdf->writeHTML($tabla, true, false, true, false, '');
+
+        // Agregar un espacio vertical adicional entre la tabla y la firma
+        $pdf->Ln(20);
+        //Resumen del libro
+        $pdf->SetFont('Helvetica', '', 12);
+        //Espacio para firma del contador
+        $pdf->Cell(160);
+        $pdf->Cell(90, 5, '___________________________________', 0, 1, 'R');
+        //Nombre del contador
+        $pdf->Cell(160);
+        $pdf->Cell(75, 5, $emisor->contador, 0, 1, 'R');
+        //Rol del que firma
+        $pdf->Cell(160);
+        $pdf->Cell(60, 5, $emisor->rol_contador, 0, 1, 'R');
+        $pdf->Ln();
+
+        // Retornar el PDF
+        return response($pdf->Output('Contribuyente - ' . $nombreMes . '.pdf', 'S'))
             ->header('Content-Type', 'application/pdf');
     }
+
 
     //Funcion para obtener el reporte de inventario en pdf
     public function inventario()
@@ -193,7 +313,7 @@ class ReportesController extends Controller
 
 
         //Retorna el pdf
-        return response($pdf->Output('Inventario'  . '.pdf', 'S'))
+        return response($pdf->Output('Inventario' . '.pdf', 'S'))
             ->header('Content-Type', 'application/pdf');
     }
 
@@ -201,12 +321,12 @@ class ReportesController extends Controller
     {
 
         $compras = DB::table('compras')
-        ->join('proveedor', 'proveedor.id', '=', 'compras.proveedor_id')
-        ->join('tipo_proveedor', 'tipo_proveedor.id', '=', 'proveedor.id')
-        ->select('compras.*', 'proveedor.*', 'tipo_proveedor.tipo')
-        ->whereYear('compras.fecha', $anio) 
-        ->whereMonth('compras.fecha', $mes)
-        ->get();
+            ->join('proveedor', 'proveedor.id', '=', 'compras.proveedor_id')
+            ->join('tipo_proveedor', 'tipo_proveedor.id', '=', 'proveedor.id')
+            ->select('compras.*', 'proveedor.*', 'tipo_proveedor.tipo')
+            ->whereYear('compras.fecha', $anio)
+            ->whereMonth('compras.fecha', $mes)
+            ->get();
 
         //Obtenemos las compras del mes
 
@@ -215,11 +335,11 @@ class ReportesController extends Controller
         $pdf->setPageOrientation('L');
         $pdf->writeHTML('<h2>NombreEmpresa</h2>', 0, 0, 0, 0, 'C');
         $pdf->writeHTML('<h2>Libro de compras</h2>', 0, 0, 0, 0, 'C');
-        $pdf->writeHTML('<p>DATA: '.$compras.'</p>');
+        $pdf->writeHTML('<p>DATA: ' . $compras . '</p>');
 
 
         //Retorna el pdf
-        return response($pdf->Output('Compras'  . '.pdf', 'S'))
+        return response($pdf->Output('Compras' . '.pdf', 'S'))
             ->header('Content-Type', 'application/pdf');
     }
 
@@ -481,7 +601,7 @@ class ReportesController extends Controller
             ->join('proveedor', 'proveedor.id', '=', 'compras.proveedor_id')
             ->join('tipo_proveedor', 'tipo_proveedor.id', '=', 'proveedor.id')
             ->select('compras.*', 'proveedor.*', 'tipo_proveedor.tipo')
-            ->whereYear('compras.fecha', $anio) 
+            ->whereYear('compras.fecha', $anio)
             ->whereMonth('compras.fecha', $mes)
             ->get();
 
