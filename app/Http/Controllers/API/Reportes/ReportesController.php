@@ -170,10 +170,10 @@ class ReportesController extends Controller
             ->header('Content-Type', 'application/pdf');
     }
 
-    //Funcion para obtener el reporte de inventario en pdf
+    //Función para obtener el reporte de inventario en pdf
     public function inventario()
     {
-        //data
+        // Obtenemos los productos
         $productos = DB::table('productos')
             ->join('inventario', 'inventario.producto_id', '=', 'productos.id')
             ->join('unidadmedida', 'inventario.unidad_medida_id', '=', 'unidadmedida.id')
@@ -181,8 +181,24 @@ class ReportesController extends Controller
             ->where('inventario.equivalencia', 1)
             ->get();
 
+        $emisor = Emisor::first();
 
         $pdf = new TCPDF();
+
+        $pdf->SetPrintHeader(false); // Desactivar el encabezado
+        $pdf->SetPrintFooter(false); // Desactivar el pie de página
+
+        $pdf->AddPage('P', [216, 279]);
+        $pdf->writeHTML('<h2>' . $emisor->nombre_comercial . '</h2>', true, 0, 0, 0, 'C');
+        $pdf->writeHTML('<h2>Reporte de inventario</h2><br>', true, 0, 0, 0, 'C');
+
+        // Datos del emisor
+        $pdf->Cell(70, 5, 'Contribuyente: ' . $emisor->nombre, 0, 1, 'L');
+        $pdf->Cell(60, 5, 'NIT: ' . $emisor->nit, 0, 0, 'L');
+        $pdf->Cell(70, 5, 'NRC: ' . $emisor->nrc, 0, 1, 'R');
+        $pdf->Ln();
+
+          /*
         $pdf->AddPage();
         $pdf->writeHTML('<h2>NombreEmpresa</h2>', 0, 0, 0, 0, 'C');
         $pdf->writeHTML('<h2>Reporte de inventario</h2>', 0, 0, 0, 0, 'C');
@@ -190,11 +206,84 @@ class ReportesController extends Controller
         $pdf->writeHTML('<p>N°, Codigo del producto, Nombre del producto, Unidad de medida, Existencias, Precio de Costo, Precio de Venta.</p>');
         $pdf->writeHTML('<p>Y al final un campo total que sume el precio de costo de todos los productos</p>');
         $pdf->writeHTML('<p>DATA' . $productos . '</p>');
+        */
 
+        $tabla = '
+        <table  border="0" cellpading="0" cellspacing="0" style="border-collapse: collapse; width: 100%; height:100%;" >
+            <thead>
+                <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef; font-size:11px">
+                    <th rowspan="2" style="border: 1px solid black; width: 27px;height:30px;">N°</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 60px">Código producto</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 135px">Nombre producto</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 75px">Unidad de medida</th>
 
-        //Retorna el pdf
-        return response($pdf->Output('Inventario'  . '.pdf', 'S'))
-            ->header('Content-Type', 'application/pdf');
+                    <th style="border-top: 1px solid black; border-left: 1px solid black; border-right: 1px solid black; text-align: center; 
+                    width: 67px;">Existencias</th>
+
+                    <th rowspan="2" style="border: 1px solid black; width: 61px">Precio de costo</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 61px">Precio de venta</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 65px">Total</th>
+
+                </tr>
+                <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
+                    <th style="border-bottom: 1px solid black; text-align: center; width: 75px;"></th>
+                </tr>
+            </thead>
+            <tbody>';
+        //contador
+        $numero = 1;
+        //variables para guardar las sumas
+        $sumaPrecioCosto = 0;
+        $sumaPrecioVenta = 0;
+        $sumaTotal = 0;
+
+        // Iterar para mostrar cada venta en la tabla
+        foreach ($productos as $item) {
+            $total = $item->existencias * $item->precioCosto;
+
+            $sumaPrecioCosto += $item->precioCosto;
+            $sumaPrecioVenta += $item->precioVenta;
+            $sumaTotal += $total;
+
+            $tabla .= '
+            <tr style="font-size: 12px; border: 1px dotted gray; font-size: 10px;">
+                <td style="border: 1px dotted gray; width: 27px; height: 15px; vertical-align: bottom;">' . $numero++ . '</td>
+                <td style="border: 1px dotted gray; width: 60px; text-align: center">' . $item->cod_prod. '</td>
+                <td style="border: 1px dotted gray; width: 135px">' . $item->nombreProducto . '</td>
+                <td style="border: 1px dotted gray; width: 75px; text-align: center">' .$item->nombreUnidad . '</td>
+                <td style="border: 1px dotted gray; width: 67px; text-align: center;"> ' . number_format($item->existencias, 2) . '</td>
+                <td style="border: 1px dotted gray; width: 61px">$ ' . $item->precioCosto . '</td>
+                <td style="border: 1px dotted gray; width: 61px">$' . $item->precioVenta . '</td>
+                <td style="border: 1px dotted gray; width: 65px">$ ' . number_format($total, 2) . '</td>
+            </tr>';
+        }
+        $tabla .= '
+        <hr>
+        <tr style="font-weight: bold">
+            <td colspan="4" style="text-align: center; width: 364px; border-top: 1px solid black; border-bottom: 1px solid black;">SUMAS</td>
+            <td style="width: 61px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black;">$ ' . number_format($sumaPrecioCosto, 2) . '</td>
+            <td style="width: 61px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black;">$ ' . number_format($sumaPrecioVenta, 2) . '</td>
+            <td style="width: 69px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black;">$ ' . number_format($sumaTotal, 2) . '</td>
+        </tr>
+        </tbody>
+        </table>
+        <hr>';
+
+        // Ahora escribimos la tabla en el PDF
+        $pdf->writeHTML($tabla, true, false, true, false, '');
+
+        //Espacio para firma del contador
+        $pdf->Ln(15);
+
+        $pdf->Cell(90, 5, '___________________________________', 0, 1, 'R');
+
+        //Nombre del contador
+        $pdf->Cell(75, 5, $emisor->contador, 0, 1, 'R');
+
+        // Retornamos el PDF
+        return response($pdf->Output('Inventario.pdf', 'S'))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename="ReporteInventario.pdf"');
     }
 
     public function compras($mes, $anio)
