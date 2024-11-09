@@ -36,7 +36,9 @@ class DTE extends Model
         'motivo_contingencia',
         'tipo_documento',
         'anulada_id',
-        'contingencia_id'
+        'contingencia_id',
+        'firma',
+        'qr_code'
     ];
 
     public $hidden = [

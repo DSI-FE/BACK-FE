@@ -93,7 +93,7 @@ class Cliente extends Model
     // Atributo para obtener el nombre de la actividad económica
     public function getEconomicActivityNameAttribute()
     {
-        return $this->economicActivity->actividad;
+        return $this->economicActivity->actividad ?? null;
     }
 
     // Para hacer estos atributos visibles en el JSON

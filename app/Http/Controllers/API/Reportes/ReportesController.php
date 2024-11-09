@@ -6,6 +6,7 @@ namespace App\Http\Controllers\API\Reportes;
 use App\Http\Controllers\Controller;
 use App\Models\DTE\DTE;
 use App\Models\DTE\Emisor;
+use App\Models\Ventas\DetalleVenta;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -201,12 +202,12 @@ class ReportesController extends Controller
     {
 
         $compras = DB::table('compras')
-        ->join('proveedor', 'proveedor.id', '=', 'compras.proveedor_id')
-        ->join('tipo_proveedor', 'tipo_proveedor.id', '=', 'proveedor.id')
-        ->select('compras.*', 'proveedor.*', 'tipo_proveedor.tipo')
-        ->whereYear('compras.fecha', $anio) 
-        ->whereMonth('compras.fecha', $mes)
-        ->get();
+            ->join('proveedor', 'proveedor.id', '=', 'compras.proveedor_id')
+            ->join('tipo_proveedor', 'tipo_proveedor.id', '=', 'proveedor.id')
+            ->select('compras.*', 'proveedor.*', 'tipo_proveedor.tipo')
+            ->whereYear('compras.fecha', $anio)
+            ->whereMonth('compras.fecha', $mes)
+            ->get();
 
         //Obtenemos las compras del mes
 
@@ -215,7 +216,7 @@ class ReportesController extends Controller
         $pdf->setPageOrientation('L');
         $pdf->writeHTML('<h2>NombreEmpresa</h2>', 0, 0, 0, 0, 'C');
         $pdf->writeHTML('<h2>Libro de compras</h2>', 0, 0, 0, 0, 'C');
-        $pdf->writeHTML('<p>DATA: '.$compras.'</p>');
+        $pdf->writeHTML('<p>DATA: ' . $compras . '</p>');
 
 
         //Retorna el pdf
@@ -481,7 +482,7 @@ class ReportesController extends Controller
             ->join('proveedor', 'proveedor.id', '=', 'compras.proveedor_id')
             ->join('tipo_proveedor', 'tipo_proveedor.id', '=', 'proveedor.id')
             ->select('compras.*', 'proveedor.*', 'tipo_proveedor.tipo')
-            ->whereYear('compras.fecha', $anio) 
+            ->whereYear('compras.fecha', $anio)
             ->whereMonth('compras.fecha', $mes)
             ->get();
 
@@ -513,4 +514,97 @@ class ReportesController extends Controller
             'Cache-Control' => 'max-age=0',
         ]);
     }
+
+    public function ticket($idDTE)
+{
+    // Obtener el DTE junto con su venta asociada
+    $dte = DTE::with('ventas', 'ambiente', 'moneda', 'tipo')->where('id', $idDTE)->first();
+
+    // Verificar si el DTE existe
+    if (!$dte) {
+        return response()->json([
+            'message' => 'DTE no encontrado',
+        ], 404);
+    }
+
+    // Obtener los detalles de la venta
+    $detalle = DetalleVenta::with('producto')
+        ->where('venta_id', $dte->id_venta)
+        ->get();
+
+    // Obtener los datos del emisor
+    $emisor = Emisor::with(['department', 'municipality', 'economicActivity'])
+        ->where('id', 1)->first();
+
+    // Configuración de TCPDF
+    $pdf = new TCPDF();
+    $pdf->AddPage('P', [216, 100]); // Formato de ticket
+  //  $pdf->setCellMargins(0, 0, 0, 0);
+   // $pdf->setPrintHeader(false);
+    //$pdf->setPrintFooter(false);
+    //$pdf->SetMargins(10, 10, 10); // Márgenes estrechos para el formato de ticket
+
+   // Generar contenido HTML para el ticket
+$html = '<div style="text-align: left; font-family: Consolas; font-size: 8px; line-height: 0.8;">';
+$html .= '<h5 style="text-align: center; line-height: 1.1">' . $emisor->nombre . '</h5>';
+$html .= '<p style="text-align: center;">' . $emisor->economicActivity->actividad . '</p>';
+$html .= '<p style="line-height: 0.5; text-align: center;">NRC: ' . $emisor->nrc . '.   NIT: ' . $emisor->nit . '</p>';
+$html .= '<p style="line-height: 0.5; text-align: center;">Teléfono: ' . $emisor->telefono . '.   Correo: ' . $emisor->correo . '</p>';
+$html .= '<hr>';
+$html .= '<p style="text-align: center; font-weight: bold; background-color: #000; color: #fff; margin: 0;">DETALLE DEL DTE</p>';
+$html .= '<p style="margin: 0;">Tipo: ' . $dte->tipo->nombre . '</p>';
+$html .= '<p style="margin: 0;  line-height: 0.6">Fecha de generación: ' . $dte->fecha . ' ' . $dte->hora . '</p>';
+$html .= '<p style="margin: 0;  line-height: 1">Código de generación:<br> ' . $dte->codigo_generacion . '</p>';
+$html .= '<p style="margin: 0;  line-height: 1">Número de Control: ' . $dte->numero_control . '</p>';
+$html .= '<p style="margin: 0;  line-height: 1">Sello de recepción: ' . $dte->sello_recepcion . '</p>';
+$html .= '<hr style="margin: 0;">';
+$html .= '<p style="text-align: center; font-weight: bold; background-color: #000; color: #fff; margin: 0;">DATOS DEL CLIENTE</p>';
+$html .= '<p style="margin: 0; line-height: 1">Cliente: ' . $dte->ventas->cliente->nombres . ' ' . $dte->ventas->cliente->apellidos . '</p>';
+$html .= '<p style="margin: 0;">Dirección: ' . $dte->ventas->cliente->direccion . ', '. $dte->ventas->cliente->municipality_name . ', '.$dte->ventas->cliente->department_name. '</p>';
+$html .= '<p style="margin: 0;">Teléfono: ' . $dte->ventas->cliente->telefono . '  '. '  Correo: ' . $dte->ventas->cliente->correoElectronico . '</p>';
+$html .= '<hr>';
+    $html .= '<p style="text-align: center; font-weight: bold; background-color: #000; color: #fff;">DETALLE DE LA VENTA</p>';
+
+    // Detalles de artículos
+    $html .= '<table width="100%" cellpadding="5" style="margin: 0; border-collapse: collapse;">
+            <thead>
+                <tr style="font-weight: bold; background-color: #ccc;">
+                    <th style="width: 20px">N°</th> 
+                    <th style="width: 30px">Cant.</th>
+                    <th style="width: 97px">Artículo</th>
+                    <th style="width: 40px">Precio/u</th>
+                    <th style="width: 40px">Total</th>
+                </tr>
+            </thead>
+            <tbody>';
+    $contador = 1;
+    foreach ($detalle as $item) {
+        $html .= '<tr>
+                <td style="width: 20px">' . $contador++ . '</td>
+                <td style="width: 25px">' . $item->cantidad . '</td>
+                <td style="width: 90px">' . $item->producto->nombre_producto . '</td>
+                <td style="width: 40px">$' . number_format($item->precio, 2) . '</td>
+                <td style="width: 50px">$' . number_format($item->total, 2) . '</td>
+              </tr>';
+    }
+    $html .= '</tbody></table>';
+    $html .= '<hr>';
+    $html .= '<p style="text-align: right; font-weight: bold;">Total a pagar: $' . number_format($dte->ventas->total_pagar, 2) . '</p>';
+    $html .= '<hr><br>';
+
+    $html .= '</div>';
+
+    // Agregar el contenido HTML al PDF usando writeHTML
+    $pdf->writeHTML($html, true, false, true, false, '');
+
+     //RUTA DEL QR ESTATICO
+     $imageQR = storage_path('app/public/QRCODES/' . $dte->qr_code);
+     $y = $pdf->getY();
+     $pdf->Image($imageQR, 35, $y, 30, 30, 'PNG', '', '', false, 150, '', false, false, 1, false, false, false);
+
+    // Salida del PDF
+    return response($pdf->Output('Ticket.pdf', 'S'))
+        ->header('Content-Type', 'application/pdf');
+}
+
 }

@@ -52,7 +52,7 @@ class VentasController extends Controller
 
         $sort = json_decode($request->input('sort'), true);
         $orderBy = isset($sort['key']) && !empty($sort['key']) ? $sort['key'] : 'id';
-        $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
+        $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'desc';
 
         // Obtener las ventas con filtrado y ordenamiento
         $ventas = Venta::with(['cliente', 'condicion', 'tipo_documento'])
@@ -157,7 +157,8 @@ class VentasController extends Controller
                 'condicion' => $request->condicion,
                 'tipo_documento' => $request->tipo_documento,
                 'cliente_id' => $request->cliente_id,
-                'tipo_pago_id' => 1
+                'tipo_pago_id' => 1,
+                'retencion' => $request->retencion,
             ]);
             $detalleVentas = [];
 
@@ -372,7 +373,7 @@ class VentasController extends Controller
             ->where('id', 1)->first();
 
         //imagen
-        $imagePath = storage_path('app/public/logos/IFLOSERSA.png');
+        $imagePath = storage_path('app/public/logos/LANDOS.png');
         $anuladaPath = storage_path('app/public/logos/anulado.png');
 
 
@@ -395,91 +396,221 @@ class VentasController extends Controller
         //URL que va a contener el qr
         $url = 'https://admin.factura.gob.sv/consultaPublica?ambiente=' . $codigoAmbiente . '&codGen=' . $dte->codigo_generacion . '&fechaEmi=' . $dte->fecha;
 
+        //RUTA DEL QR ESTATICO
+        $imageQR = storage_path('app/public/QRCODES/' . $dte->qr_code);
+
+
         //Diseño del pdf
         $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8', false);
         $pdf->AddPage();
         // Definir el color del borde (RGB)
-        $pdf->SetDrawColor(220, 220, 220);
+        $pdf->SetDrawColor(152, 155, 155);
 
         // Dibujar un rectángulo alrededor de la página
         $borderMargin = 5; // Margen del borde
         $pdf->Rect($borderMargin, $borderMargin, $pdf->getPageWidth() - 2 * $borderMargin, $pdf->getPageHeight() - 2 * $borderMargin, 'D');
 
-        if ($dte->ventas->estado == "Anulada") {
-            //marca de agua por si es factura anulada
-            $pdf->SetAlpha(0.5);
-            // Añadir la imagen como marca de agua (centro de la página)
-            $pdf->Image($anuladaPath, 30, 50, 150, 150, '', '', '', false, 300, '', false, false, 0);
-
-            // Restablecer la transparencia
-            $pdf->SetAlpha(1);
+        if ($dte->qr_code) {
+            $pdf->Image($imagePath, 10, $pdf->GetY() + 1, 43, 0, '', '', '', false, 300, '', false, false, 0, 'L', false);
+        } else {
+            $pdf->Image($imageQR, 93, 23, 25, 25, 'PNG', '', '', false, 300, '', false, false, 0);
         }
+        // Inserta el logo alineado a la izquierda
+        $pdf->Image($imagePath, 10, $pdf->GetY() + 1, 43, 0, '', '', '', false, 300, '', false, false, 0, 'L', false);
 
-        $pdf->writeHTML('<h3 style="text-align: center; font-size: 13px; font-family: \'Times New Roman\', Times, serif;">DOCUMENTO TRIBUTARIO ELECTRONICO</h3>');
-        $pdf->writeHTML('<h3 style="text-align: center; font-size: 13px; font-family: \'Times New Roman\', Times, serif;">' . $dte->tipo->nombre . '</h3>');
-        // Generar el código QR en el centro
-        $pdf->writeHTML('<img src="' . $imagePath . '" alt="Logo IFLOSERSA" width="175" />');
-        $pdf->write2DBarcode($url, 'QRCODE,H', 93, 23, 25, 25, array('border' => false), 'N');
+        // Mueve el cursor hacia la derecha para centrar "DOCUMENTO TRIBUTARIO ELECTRONICO" en la misma línea
+        $pdf->SetFont('times', 'B', 13);
+        $pdf->SetX(60); // Ajusta X para que quede centrado
+        $pdf->Cell(97, 5, 'DOCUMENTO TRIBUTARIO ELECTRONICO', 0, 0, 'C');
+
+        // Coloca "Ver 3" a la derecha en la misma línea
+        $pdf->SetX(-30); // Ajusta X para alinearlo a la derecha
+        $pdf->Cell(0, 5, 'version. ' . $dte->version, 0, 1, 'R');
+        $pdf->Cell(0, 5, $dte->tipo->nombre, 0, 1, 'C');
+
+    
+        // Establecer la fuente en negrita para los títulos
+        $pdf->SetFont('Times', 'B', 10);
+
+        // Texto a la izquierda
+        $pdf->Cell(55, 10, 'Codigo de generación', 0, 0, 'L');
+        $pdf->Cell(70, 5, '', 0, 0, 'C'); // Celda vacía para posicionar la imagen en el centro
+        // Inserta la imagen en el centro de la celda
+        $pdf->Image($imageQR, $pdf->GetX() - 42, $pdf->GetY() + 3, 30, 30, '', '', '', false, 300, '', false, false, 0, 'C', false);
+
+        // Texto a la derecha
+        $pdf->Cell(200, 10, 'Modelo de Facturación: ', 0, 0, 'L');
+
+        // Agrega una nueva línea para los datos adicionales
+        $pdf->Ln(7); // Añade espacio vertical entre líneas
+
+        // Establecer la fuente normal para el contenido
+        $pdf->SetFont('Times', '', 10);
+
+        // Texto para código de generación y modelo de facturación en la misma línea
+        $pdf->Cell(60, 5, $dte->codigo_generacion, 0, 0, 'L');
+        $pdf->Cell(70, 5, '', 0, 0, 'C'); // Celda vacía en el centro
+        $pdf->Cell(35, 5, $dte->modeloFacturacion->nombre, 0, 1, 'R');
+        $pdf->Ln(1); // Añade espacio vertical entre líneas
+
+        // Establecer la fuente en negrita para los títulos
+        $pdf->SetFont('Times', 'B', 10);
+
+        // Texto a la izquierda
+        $pdf->Cell(60, 5, 'Número de control', 0, 0, 'L');
+        $pdf->Cell(70, 5, '', 0, 0, 'C'); // Celda vacía
+        $pdf->Cell(30, 5, 'Tipo de Transmisión: ', 0, 1, 'R');
+
+        // Establecer la fuente normal para el contenido
+        $pdf->SetFont('Times', '', 10);
+
+        // Texto para número de control y tipo de transmisión en la misma línea
+        $pdf->Cell(60, 5, $dte->numero_control, 0, 0, 'L');
+        $pdf->Cell(70, 5, '', 0, 0, 'C'); // Celda vacía en el centro   
+        if($dte->tipo_transmision == '1'){
+            $pdf->Cell(26, 5, $dte->tipoTransmision->nombre, 0, 1, 'R');
+        }else{
+            $pdf->Cell(38, 5, $dte->tipoTransmision->nombre, 0, 1, 'R');
+        }
+       // $pdf->Cell(26, 5, $dte->tipoTransmision->nombre, 0, 1, 'R');
+        $pdf->Ln(1); // Añade espacio vertical entre líneas
+
+        // Establecer la fuente en negrita para los títulos
+        $pdf->SetFont('Times', 'B', 10);
+
+        // Texto a la izquierda
+        $pdf->Cell(60, 5, 'Sello de recepción', 0, 0, 'L');
+        $pdf->Cell(70, 5, '', 0, 0, 'C'); // Celda vacía
+        $pdf->Cell(40, 5, 'Fecha y hora de generación: ', 0, 1, 'R');
+
+        // Establecer la fuente normal para el contenido
+        $pdf->SetFont('Times', '', 10);
+
+        // Texto para sello de recepción y fecha/hora de generación en la misma línea
+        $pdf->Cell(60, 5, $dte->sello_recepcion, 0, 0, 'L');
+        $pdf->Cell(70, 5, '', 0, 0, 'C'); // Celda vacía en el centro
+        $pdf->Cell(27, 5, $dte->fecha . ' ' . $dte->hora, 0, 1, 'R');
+
+
 
         // Definir el contenido de la tabla
-        $tablaDTE = '
+        /*   $tablaDTE = '
 <table border="0" cellspacing="2" cellpadding="2" width="100%; ">
     <tr>
         <td style="text-align: left; width: 55%; font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
-            <p>Código de generación: <br>' . $dte->codigo_generacion . '</p>
-            <p>Número de control: <br>' . $dte->numero_control . '</p>
-            <p>Sello de recepción: <br>' . $dte->sello_recepcion . '</p>
+            <p><strong>Código de generación:</strong> <br>' . $dte->codigo_generacion . '</p>
+            <p><strong>Número de control:</strong> <br>' . $dte->numero_control . '</p>
+            <p><strong>Sello de recepción:</strong> <br>' . $dte->sello_recepcion . '</p>
         </td>
         <td style="text-align: left; width: 55%; font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
-            <p>Modelo de facturación: <br>'. $dte->modeloFacturacion->nombre.'</p>
-            <p>Tipo de transmisión: <br>'. $dte->tipoTransmision->nombre.'</p>
-            <p>Fecha y hora de generación: <br>' . $dte->fecha . ' ' . $dte->hora . '</p>
+            <p><strong>Modelo de facturación:</strong> <br>' . $dte->modeloFacturacion->nombre . '</p>
+            <p><strong>Tipo de transmisión:</strong> <br>' . $dte->tipoTransmision->nombre . '</p>
+            <p><strong>Fecha y hora de generación:</strong> <br>' . $dte->fecha . ' ' . $dte->hora . '</p>
         </td>
     </tr>
 </table>';
 
         // Escribir la tabla en el PDF
-        $pdf->writeHTML($tablaDTE, true, false, true, false, '');
+        $pdf->writeHTML($tablaDTE, true, false, true, false, '');*/
+
+        $x = 11;
+        $y = 65;
+        $width = 88;
+        $height = 10;
+        $radius = 10;
+
+        // Definir color de relleno y borde
+        $fillColor = array(220, 220, 220);  // Gris claro
+        $borderColor = array(0, 0, 0);      // Negro
+
+        // Establecer el color de relleno
+        $pdf->SetFillColor($fillColor[0], $fillColor[1], $fillColor[2]);
+
+        // Establecer el color de borde
+        $pdf->SetDrawColor($borderColor[0], $borderColor[1], $borderColor[2]);
+
+        // Dibuja el rectángulo redondeado
+        $pdf->RoundedRect($x, $y, $width, $height, $radius, '0101', 'DF', array('all' => array('width' => 0.5, 'color' => '#DCDCDC')));
 
 
-        $tablaEmisor = '
+        // Establecer la fuente en negrita
+        $pdf->SetFont('Times', 'B', 12); // 'B' indica negrita, y el tamaño de la fuente es 12
+
+        // Agregar texto dentro del rectángulo en mayúsculas y negrita
+        $pdf->SetXY($x, $y + 3);
+        $pdf->Cell($width, 2, strtoupper('Emisor'), 0, 1, 'C');
+
+        // Volver a la fuente normal si necesitas más texto después
+        $pdf->SetFont('Times', '', 10); // Cambia a fuente normal
+
+        // Ajusta la posición Y para la tabla
+        $y += $height + 1; // Un poco de espacio entre el rectángulo y la tabla
+
+        // Define el contenido de la tabla
+        $tablaEmisor = '<br><br>
 <table style="font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
+   
     <tr>
-        <th style="text-align: center; border: 1px solid gray;  height: 25px; background-color: #DCDCDC; font-size: 12px;"><strong>Emisor</strong></th>
+        <td style="font-family: \'Times New Roman\', Times, serif; font-weight: bold; font-size: 12px;">' . $emisor->nombre . '</td>
     </tr>
     <tr>
-       <td style="font-family: \'Times New Roman\', Times, serif; font-weight: bold; font-size: 12px;">' . $emisor->nombre . '</td>
-
+        <td>NIT: ' . $emisor->nit . '</td>
     </tr>
     <tr>
-       <td>NIT: ' . $emisor->nit . '</td>
+        <td>NRC: ' . $emisor->nrc . '</td>
     </tr>
     <tr>
-       <td>NRC: ' . $emisor->nrc . '</td>
+        <td>Actividad económica: ' . $emisor->economic_activity_name . '</td>
     </tr>
     <tr>
-       <td>Actividad económica: ' . $emisor->economic_activity_name . '</td>
+        <td>Dirección: ' . $emisor->direccion . ', ' . $emisor->municipality->name . ', ' . $emisor->department->name . '</td>
     </tr>
     <tr>
-       <td>Dirección: ' . $emisor->direccion . ', ' . $emisor->municipality->name . ', ' . $emisor->department->name . '</td>
+        <td>Teléfono: ' . $emisor->telefono . '</td>
     </tr>
     <tr>
-       <td>Teléfono: ' . $emisor->telefono . '</td>
+        <td>Correo electrónico: ' . $emisor->correo . '</td>
     </tr>
     <tr>
-       <td>Correo electrónico: ' . $emisor->correo . '</td>
-    </tr>
-    <tr>
-       <td>Tipo de establecimiento:'. $emisor->establecimiento->valores.'</td>
+        <td>Tipo de establecimiento: ' . $emisor->establecimiento->valores . '</td>
     </tr>
 </table>';
 
+        $x = 112;
+        $y = 65;
+        $width = 88;
+        $height = 10;
+        $radius = 10;
 
-        $tablaCliente = '
+        // Definir color de relleno y borde
+        $fillColor = array(220, 220, 220);  // Gris claro
+        $borderColor = array(0, 0, 0);      // Negro
+
+        // Establecer el color de relleno
+        $pdf->SetFillColor($fillColor[0], $fillColor[1], $fillColor[2]);
+
+        // Establecer el color de borde
+        $pdf->SetDrawColor($borderColor[0], $borderColor[1], $borderColor[2]);
+
+        // Dibuja el rectángulo redondeado
+        $pdf->RoundedRect($x, $y, $width, $height, $radius, '0101', 'DF', array('all' => array('width' => 0.5, 'color' => '#DCDCDC')));
+
+
+        // Establecer la fuente en negrita
+        $pdf->SetFont('Times', 'B', 12); // 'B' indica negrita, y el tamaño de la fuente es 12
+
+        // Agregar texto dentro del rectángulo en mayúsculas y negrita
+        $pdf->SetXY($x, $y + 3);
+        $pdf->Cell($width, 2, strtoupper('Receptor'), 0, 1, 'C');
+
+        // Volver a la fuente normal si necesitas más texto después
+        $pdf->SetFont('Times', '', 10); // Cambia a fuente normal
+
+        // Ajusta la posición Y para la tabla
+        $y += $height + 1; // Un poco de espacio entre el rectángulo y la tabla
+
+        $tablaCliente = '<br><br>
 <table style=" font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
-    <tr>
-         <th style="text-align: center; border: 1px solid gray;  height: 25px; background-color: #DCDCDC;  font-size: 12px;"><strong>Receptor</strong></th>
-    </tr>
     <tr>
          <th style="font-family: \'Times New Roman\', Times, serif; font-weight: bold; font-size: 12px;">' . $dte->ventas->cliente_nombre . '</th>
     </tr>
@@ -506,7 +637,49 @@ class VentasController extends Controller
     </tr>
 </table>';
 
-        $tablaContenido = ' <br><br><br>
+        // Escribir la tabla del Emisor (a la izquierda)
+        $pdf->writeHTMLCell(90, '', 10, '', $tablaEmisor, 0, 0, 0, true, 'L', true);
+
+        // Escribir la tabla del Cliente (a la derecha)
+        $pdf->writeHTMLCell(90, '', 110, '', $tablaCliente, 0, 1, 0, true, 'L', true);
+
+        $x = 11;
+        $y = 135;
+        $width = 190;
+        $height = 10;
+        $radius = 10;
+
+        // Definir color de relleno y borde
+        $fillColor = array(220, 220, 220);  // Gris claro
+        $borderColor = array(0, 0, 0);      // Negro
+
+        // Establecer el color de relleno
+        $pdf->SetFillColor($fillColor[0], $fillColor[1], $fillColor[2]);
+
+        // Establecer el color de borde
+        $pdf->SetDrawColor($borderColor[0], $borderColor[1], $borderColor[2]);
+
+        // Dibuja el rectángulo redondeado
+        $pdf->RoundedRect($x, $y, $width, $height, $radius, '0101', 'DF', array('all' => array('width' => 0.5, 'color' => '#DCDCDC')));
+
+
+        // Establecer la fuente en negrita
+        $pdf->SetFont('Times', 'B', 10); // 'B' indica negrita, y el tamaño de la fuente es 12
+
+        // Agregar texto dentro del rectángulo en mayúsculas y negrita
+        $pdf->SetXY($x + 100, $y);
+        $pdf->Cell($width, 5, '             Precio        Desc      Ventas       Ventas      Ventas', 0, 1, 'L');
+        $pdf->Cell($width, 5, '  N°       Cantidad          Descripcion                                                  Unidad   Unitario      Item     no sujetas   exentas   gravadas', 0, 1, 'L');
+        // Volver a la fuente normal si necesitas más texto después
+        $pdf->SetFont('Times', '', 10); // Cambia a fuente normal
+
+        // Ajusta la posición Y para la tabla
+        $y += $height + 5; // Un poco de espacio entre el rectángulo y la tabla
+
+
+
+
+        /*   $tablaContenido = ' <br><br><br>
 <table style="border-collapse: collapse; width: 100%;  font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
     <tr style="background-color: #DCDCDC; text-align: center; font-weight: bold">
          <th style="width: 23px;">N°</th>
@@ -518,85 +691,87 @@ class VentasController extends Controller
          <th style="width: 47px;">Ventas no sujetas</th>
          <th style="width: 42px;">Ventas Exentas</th>
          <th style="width: 50px;">Ventas Gravadas</th>
-    </tr>';
+    </tr>';*/
+        $tablaContenido = '<table style="border-collapse: collapse; width: 100%;  font-size: 10px; font-family: \'Times New Roman\', Times, serif;">';
         // Iteramos sobre el array para agregar los productos a la tabla
         $numero = 1;
         $cantidades = 0;
         $diesel = 0;
+
         // Iterar solo sobre los productos
         foreach ($detalle as $item) {
             //Si es CCF y Diesel
             if ($dte->tipo_documento == 2 && $item['producto']['producto']['combustible']) {
                 $tablaContenido .= '
-            <tr style="font-size: 9px; ">
-                 <td style="height: 15px">' . $numero++ . '</td>
-                 <td>' . $item['cantidad'] . '</td>
-                 <td>' . $item['producto']['nombre_producto'] . '</td>
-                 <td>' . $item['producto']['unidad_medida'] . '</td>
-                 <td>$' . number_format(($item['precio'] - 0.30) / 1.13, 4) . '</td>
-                 <td>$0.00</td>
-                 <td>$0.00</td>
-                 <td>$0.00</td>
-                 <td>$' . number_format(($item['total'] - $item['cantidad'] * 0.30) / 1.13, 3) . '</td>
+            <tr style="font-size: 9px; text-align: center ">
+               <td style="height: 15px; width: 23px">' . $numero++ . '</td>
+                 <td  style="width: 50px;">' . $item['cantidad'] . '</td>
+                 <td  style="width: 195px; text-align: left">' . $item['producto']['nombre_producto'] . '</td>
+                 <td  style="width: 42px;">' . $item['producto']['unidad_medida'] . '</td>
+                 <td  style="width: 42px;">$' . number_format(($item['precio'] - 0.30) / 1.13, 4) . '</td>
+                 <td  style="width: 45px;">$0.00</td>
+                 <td  style="width: 42px;">$0.00</td>
+                 <td  style="width: 45px;">$0.00</td>
+                 <td  style="width: 50px;">$' . number_format(($item['total'] - $item['cantidad'] * 0.30) / 1.13, 3) . '</td>
             </tr>';
             }
             if ($dte->tipo_documento == 1 && $item['producto']['producto']['combustible']) {
                 $tablaContenido .= '
-            <tr style="font-size: 9px">
-                 <td style="height: 15px">' . $numero++ . '</td>
-                 <td>' . $item['cantidad'] . '</td>
-                 <td>' . $item['producto']['nombre_producto'] . '</td>
-                 <td>' . $item['producto']['unidad_medida'] . '</td>
-                 <td>$' . number_format($item['precio'] - 0.30, 2) . '</td>
-                 <td>$0.00</td>
-                 <td>$0.00</td>
-                 <td>$0.00</td>
-                 <td>$' . number_format($item['total'] - $item['cantidad'] * 0.3, 2) . '</td>
+            <tr style="font-size: 9px; text-align: center">
+               <td style="height: 15px; width: 23px">' . $numero++ . '</td>
+                 <td  style="width: 50px;">' . $item['cantidad'] . '</td>
+                 <td  style="width: 195px; text-align: left">' . $item['producto']['nombre_producto'] . '</td>
+                 <td  style="width: 42px;">' . $item['producto']['unidad_medida'] . '</td>
+                 <td  style="width: 42px;">$' . number_format($item['precio'] - 0.30, 2) . '</td>
+                 <td  style="width: 45px;">$0.00</td>
+                 <td  style="width: 42px;">$0.00</td>
+                 <td  style="width: 42px;">$0.00</td>
+                 <td  style="width: 50px;">$' . number_format($item['total'] - $item['cantidad'] * 0.3, 2) . '</td>
             </tr>';
             }
 
             //Si es CCF pero no es diesel
             if ($dte->tipo_documento == 2 && !$item['producto']['producto']['combustible']) {
                 $tablaContenido .= '
-        <tr style="font-size: 9px; ">
-             <td style="height: 15px">' . $numero++ . '</td>
-             <td>' . $item['cantidad'] . '</td>
-             <td>' . $item['producto']['nombre_producto'] . '</td>
-             <td>' . $item['producto']['unidad_medida'] . '</td>
-             <td>$' . number_format($item['precio'] / 1.13, 4) . '</td>
-             <td>$0.00</td>
-             <td>$0.00</td>
-             <td>$0.00</td>
-             <td>$' . number_format($item['total'] / 1.13, 2) . '</td>
+        <tr style="font-size: 9px; text-align: center ">
+           <td style="height: 15px; width: 23px">' . $numero++ . '</td>
+             <td  style="width: 50px;">' . $item['cantidad'] . '</td>
+             <td  style="width: 195px; text-align: left">' . $item['producto']['nombre_producto'] . '</td>
+             <td  style="width: 42px;">' . $item['producto']['unidad_medida'] . '</td>
+             <td  style="width: 42px;">$' . number_format($item['precio'] / 1.13, 4) . '</td>
+             <td  style="width: 45px;">$0.00</td>
+             <td  style="width: 42px;">$0.00</td>
+             <td  style="width: 42px;">$0.00</td>
+             <td  style="width: 50px;">$' . number_format($item['total'] / 1.13, 2) . '</td>
         </tr>';
             }
             if ($dte->tipo_documento == 1 && !$item['producto']['producto']['combustible']) {
                 $tablaContenido .= '
-        <tr style="font-size: 9px">
-             <td style="height: 15px">' . $numero++ . '</td>
-             <td>' . $item['cantidad'] . '</td>
-             <td>' . $item['producto']['nombre_producto'] . '</td>
-             <td>' . $item['producto']['unidad_medida'] . '</td>
-             <td>$' . number_format($item['precio'], 2) . '</td>
-             <td>$0.00</td>
-             <td>$0.00</td>
-             <td>$0.00</td>
-             <td>$' . number_format($item['total'], 2) . '</td>
+        <tr style="font-size: 9px; text-align: center">
+             <td style="height: 15px; width: 23px">' . $numero++ . '</td>
+             <td style="width: 50px;">' . $item['cantidad'] . '</td>
+             <td style="width: 195px; text-align: left">' . $item['producto']['nombre_producto'] . '</td>
+             <td style="width: 42px;">' . $item['producto']['unidad_medida'] . '</td>
+             <td style="width: 42px;">$' . number_format($item['precio'], 2) . '</td>
+             <td style="width: 45px;">$0.00</td>
+             <td style="width: 42px;">$0.00</td>
+             <td style="width: 42px; text-align: left">$0.00</td>
+             <td style="width: 50px">$' . number_format($item['total'], 2) . '</td>
         </tr>';
             }
             //SI ES FACTURA SUJETO EXCLUIDO
             if ($dte->tipo_documento == 3) {
                 $tablaContenido .= '
-        <tr style="font-size: 9px">
-             <td style="height: 15px">' . $numero++ . '</td>
-             <td>' . $item['cantidad'] . '</td>
-             <td>' . $item['producto']['nombre_producto'] . '</td>
-             <td>' . $item['producto']['unidad_medida'] . '</td>
-             <td>$' . number_format($item['precio'], 2) . '</td>
-             <td>$0.00</td>
-             <td>$0.00</td>
-             <td>$0.00</td>
-             <td>$' . number_format($item['total'], 2) . '</td>
+        <tr style="font-size: 9px; text-align: center">
+           <td style="height: 15px; width: 23px">' . $numero++ . '</td>
+             <td  style="width: 50px;">' . $item['cantidad'] . '</td>
+             <td  style="width: 195px; text-align: left">' . $item['producto']['nombre_producto'] . '</td>
+             <td  style="width: 42px;">' . $item['producto']['unidad_medida'] . '</td>
+             <td  style="width: 42px;">$' . number_format($item['precio'], 2) . '</td>
+             <td  style="width: 45px;">$0.00</td>
+             <td  style="width: 42px;">$0.00</td>
+             <td  style="width: 42px;">$0.00</td>
+             <td  style="width: 50px;">$' . number_format($item['total'], 2) . '</td>
         </tr>';
             }
 
@@ -648,7 +823,7 @@ class VentasController extends Controller
             <hr>
             <tr>
                 <td colspan="8" style="text-align: right;">Suma de ventas:</td>
-                <td colspan="1">$ ' . number_format($dte->ventas->total_pagar, 2)  . '</td>
+                <td colspan="1">$ ' . number_format($dte->ventas->total_pagar + $dte->ventas->retencion, 2)  . '</td>
             </tr>';
         }
 
@@ -739,11 +914,13 @@ class VentasController extends Controller
         </tr>';
         }
 
+        if($dte->tipo_documento == 3){
         $tablaContenido .= '
         <tr>
             <td colspan="8" style="text-align: right;">Retención de renta:</td>
-            <td colspan="1">$ 0.00</td>
+            <td colspan="1">$ '.$dte->ventas->retencion .'</td>
         </tr>';
+        }
 
         if ($dte->tipo_documento != 3) {
             $tablaContenido .= '
@@ -752,29 +929,81 @@ class VentasController extends Controller
             <td colspan="1">$ 0.00</td>
         </tr><br>';
         }
+        //Total en letras
         $tablaContenido .= '
         <tr>
             <td colspan="8" style="text-align: right;">Total a pagar:</td>
             <td colspan="1"><strong>$ ' . number_format($dte->ventas->total_pagar, 2) . '</strong></td>
         </tr><hr>
-        <tr>
-            <td colspan="9" style="text-align: left; background-color: #DCDCDC; height: 25px;">VALOR EN LETRAS:  ' . $totalEnLetras . '</td>
-        </tr>';
-
-        $tablaContenido .= '
-</table>';
+       </table>';
 
 
-
-
-        // Escribir la tabla del Emisor (a la izquierda)
-        $pdf->writeHTMLCell(90, '', 10, '', $tablaEmisor, 0, 0, 0, true, 'L', true);
-
-        // Escribir la tabla del Cliente (a la derecha)
-        $pdf->writeHTMLCell(90, '', 110, '', $tablaCliente, 0, 1, 0, true, 'L', true);
 
         //tabla de productos
         $pdf->writeHTMLCell('', '', '', '', $tablaContenido, 0, 1, 0, true, 'L', true);
+
+        
+        $x = 11;
+        $y = $pdf->GetY() + 5;    
+        $width = 190;
+        $height = 15;
+        $radius = 10;
+
+        // Definir color de relleno y borde
+        $fillColor = array(220, 220, 220);  // Gris claro
+        $borderColor = array(0, 0, 0);      // Negro
+
+        // Establecer el color de relleno
+        $pdf->SetFillColor($fillColor[0], $fillColor[1], $fillColor[2]);
+
+        // Establecer el color de borde
+        $pdf->SetDrawColor($borderColor[0], $borderColor[1], $borderColor[2]);
+
+        // Dibuja el rectángulo redondeado
+        $pdf->RoundedRect($x, $y, $width, $height, $radius, '0101', 'DF', array('all' => array('width' => 0.5, 'color' => '#DCDCDC')));
+
+
+
+        //Condiciones
+        // Condiciones
+        switch ($dte->ventas->condicion) {
+            case 1:
+                $nombreCondicion = 'Contado';
+                break;
+            case 2:
+                $nombreCondicion = 'A Crédito';
+                break;
+            case 3:
+                $nombreCondicion = 'Otro';
+                break;
+            default:
+                $nombreCondicion = '';
+                break;
+        }
+
+        // Agregar texto dentro del rectángulo en mayúsculas y negrita
+        
+            $pdf->SetXY($x + 5, $y);
+        
+
+        //$pdf->Cell($width, 5, 'Total en letras: ' . $totalEnLetras, 0, 1, 'L');
+        $pdf->writeHTML('<p style="margin-left: 40px; text-align: center"> <strong>   Total en letras:</strong> ' . $totalEnLetras . '</p>');
+        $pdf->writeHTML('<p style="margin-left: 40px; text-align: center"> <strong>  Condicion de la operación:</strong> ' . $nombreCondicion . '</p>');
+        // Volver a la fuente normal si necesitas más texto después
+        $pdf->SetFont('Times', '', 10); // Cambia a fuente normal
+
+        // Ajusta la posición Y para la tabla
+       // $y += $height + 5;
+
+        if ($dte->ventas->estado == "Anulada") {
+            //marca de agua por si es factura anulada
+            $pdf->SetAlpha(0.6);
+            // Añadir la imagen como marca de agua (centro de la página)
+            $pdf->Image($anuladaPath, 30, 50, 150, 150, '', '', '', false, 300, '', false, false, 0);
+
+            // Restablecer la transparencia
+            $pdf->SetAlpha(1);
+        }
 
         return response($pdf->Output('Factura_' . $dte->codigo_generacion . '.pdf', 'S'))
             ->header('Content-Type', 'application/pdf');

@@ -128,15 +128,15 @@ class ClientesController extends Controller
         $validatedData = $request->validate([
             'nombres' => 'required|string|max:100',
             'apellidos' => 'required|string|max:100',
-            'tipoIdentificacion' => 'required|max:50',
-            'numeroDocumento' => 'required|string|max:20',
+           // 'tipoIdentificacion' => 'required|max:50',
+           // 'numeroDocumento' => 'required|string|max:20',
             'direccion' => 'nullable|string|max:255',
             'nrc' => 'nullable|string|max:50',
             'telefono' => 'nullable|string|max:20',
             'correoElectronico' => 'nullable|string|max:100',
             'department_id' => 'required|exists:adm_departments,id',
             'municipality_id' => 'required|exists:adm_municipalities,id',
-            'economic_activity_id' => 'required|exists:actividad_economica,id',
+           // 'economic_activity_id' => 'required|exists:actividad_economica,id',
         ]);
 
         // Crear el nuevo cliente

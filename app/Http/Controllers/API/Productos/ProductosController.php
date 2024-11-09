@@ -5,14 +5,21 @@ namespace App\Http\Controllers\API\Productos;
 use App\Http\Controllers\Controller;
 use App\Models\Clientes\Cliente;
 use App\Models\DTE\DTE;
+use App\Models\MH\DteAuth;
 use App\Models\DTE\Emisor;
 use App\Models\DTE\Responsable;
 use App\Models\Inventarios\Inventario;
+use App\Models\Productos\TipoProducto;
 use App\Models\Productos\UnidadMedida;
 use App\Models\Ventas\DetalleVenta;
 use GuzzleHttp\Client;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Luecano\NumeroALetras\NumeroALetras;
 use NumberToWords\NumberToWords;
 use Illuminate\Support\Str;
@@ -39,9 +46,12 @@ class ProductosController extends Controller
                 });
 
                 return [
-                    'id' => $producto->id,
-                    'nombreProducto' => $producto->nombreProducto,
-                    'unidades' => $unidades
+                    'id' => $producto->id ?? '',
+                    'nombreProducto' => $producto->nombreProducto ?? '',
+                    'unidades' => $unidades,
+                    'tipo_producto_id' => $producto->tipo_producto_id ?? '',
+                    'combustible' => $producto->combustible ?? '',
+
                 ];
             })
             ->values();
@@ -64,6 +74,20 @@ class ProductosController extends Controller
         return response()->json([
             'message' => 'Lista de todas las unidades de medida',
             'data' => $unidades,
+        ], 200);
+    }
+
+
+    //Obtener todos los tipos de productos
+    public function tiposproductos()
+    {
+        // Obtener todos los productos
+        $tipos = TipoProducto::all();
+
+        // Devolver la respuesta en formato JSON con un mensaje y los datos
+        return response()->json([
+            'message' => 'Lista de todos los tipos de productos',
+            'data' => $tipos,
         ], 200);
     }
 
@@ -111,11 +135,11 @@ class ProductosController extends Controller
         //receptor si es factura lleva esta estructura
         if ($dte->tipo_documento == 1) {
             $receptor = [
-                'tipoDocumento' => $cliente->identificacion->codigo,
-                'numeroDocumento' => $cliente->numeroDocumento,
+                'tipoDocumento' => (string) $cliente->identificacion->codigo,
+                'numDocumento' =>  str_replace('-', '', $cliente->numeroDocumento),
                 'nrc' => $cliente->nrc ?? null,
                 'nombre' => $cliente->nombres . ' ' . $cliente->apellidos,
-                'codActividad' => $cliente->economicActivity->codigo ?? null,
+                'codActividad' => (string) $cliente->economicActivity->codigo ?? null,
                 'descActividad' => $cliente->economicActivity->actividad ?? null,
                 'direccion' => [
                     'departamento' => $cliente->department->codigo,
@@ -125,13 +149,14 @@ class ProductosController extends Controller
                 'telefono' => $cliente->telefono ?? null,
                 'correo' => $cliente->correoElectronico
             ];
-        } else {
+        }
+        if($dte->tipo_documento == 2){
             //si es credito fiscal lleva esta estructura
             $receptor = [
-                'nit' => $cliente->numeroDocumento,
-                'nrc' => $cliente->nrc ?? null,
+                'nit' => str_replace('-', '', $cliente->numeroDocumento),
+                'nrc' => str_replace('-', '', $cliente->nrc),
                 'nombre' => $cliente->nombres . ' ' . $cliente->apellidos,
-                'codActividad' => $cliente->economicActivity->codigo ?? null,
+                'codActividad' => (string) $cliente->economicActivity->codigo ?? null,
                 'descActividad' => $cliente->economicActivity->actividad ?? null,
                 'nombreComercial' => $cliente->nombres . ' ' . $cliente->apellidos ?? null,
                 'direccion' => [
@@ -215,7 +240,7 @@ class ProductosController extends Controller
                     [
                         'codigo' => '20',
                         'descripcion' => 'Impuesto al Valor Agregado 13%',
-                        'valor' => number_format(($ventas->total_pagar / 1.13) * 0.13, 4), // IVA sobre el total del item
+                        'valor' => (float) number_format(($ventas->total_pagar / 1.13) * 0.13, 2), // IVA sobre el total del item
                     ],
                 ];
             }
@@ -226,21 +251,10 @@ class ProductosController extends Controller
                 $tributosDetallados = [];
             }
 
-            if ($dte->tipo_documento == 1) {
-                $ivaItem = [
-                    'ivaItem' => $det->producto->producto->combustible ? number_format((($det->total - $det->cantidad * 0.3) / 1.13) * 0.13, 4) : number_format(($det->total / 1.13) * 0.13, 4),
-
-                ];
-            } else {
-                $ivaItem = [];
-            }
-
-
-
 
             if ($det->producto->producto->combustible) {
-                $precioNetoUni  = $dte->tipo_documento == 2 ? number_format(($det->precio - 0.3) / 1.13, 4) : number_format($det->precio - 0.30, 4);
-                $precioNetoTot  = $dte->tipo_documento == 2 ? number_format(($det->total - $det->cantidad * 0.3) / 1.13, 4) : number_format($det->total - $det->cantidad * 0.3, 4);
+                $precioNetoUni  = $dte->tipo_documento == 2 ? number_format(($det->precio - 0.3) / 1.13, 2) : number_format($det->precio - 0.30, 2);
+                $precioNetoTot  = $dte->tipo_documento == 2 ? number_format(($det->total - ($det->cantidad * 0.3)) / 1.13, 2) : number_format($det->total - $det->cantidad * 0.3, 4);
                 $totalGravadas = $dte->tipo_documento == 2 ? number_format(($ventas->total_pagar - $totalCantidad * 0.3) / 1.13, 4) : number_format(($ventas->total_pagar - $totalCantidad * 0.30), 4);
             } else {
                 $precioNetoUni = $dte->tipo_documento == 2 ? number_format($det->precio / 1.13, 4) : number_format($det->precio, 4);
@@ -254,120 +268,128 @@ class ProductosController extends Controller
                 'tipoItem' => $det->producto->producto->tipo_producto_id,
                 'numeroDocumento' => null,
                 'cantidad' => $det->cantidad,
-                'codigo' => $det->producto->producto_id,
+                'codigo' => (string) $det->producto->producto_id,
                 'codTributo' => null,
                 'uniMedida' => $det->producto->unidad->codigo,
                 'descripcion' => $det->producto->nombreProducto,
-                'precioUni' => $precioNetoUni, // $dte->tipo_documento == 2 ? number_format($det->precio / 1.13, 4) : number_format($det->precio, 4),
+                'precioUni' => (float) $precioNetoUni, // $dte->tipo_documento == 2 ? number_format($det->precio / 1.13, 4) : number_format($det->precio, 4),
                 'montoDescu' => 0,
                 'ventaNoSuj' => 0,
                 'ventaExenta' => 0,
-                'ventaGravada' =>  $precioNetoTot, //$dte->tipo_documento == 2 ? number_format($det->total / 1.13, 4) : number_format($det->total, 4),
+                'ventaGravada' => (float) str_replace(',','',$precioNetoTot), //$dte->tipo_documento == 2 ? number_format($det->total / 1.13, 4) : number_format($det->total, 4),
                 'tributos' => $tributos,
                 'psv' => 0,
                 'noGravado' => 0,
             ];
 
-            // Si el tipo de documento es 1, añadir el campo ivaItem
+            // Agregar ivaItem si el tipo de documento es 1
             if ($dte->tipo_documento == 1) {
-                $cuerpoItem['ivaItem'] = number_format(($det->total / 1.13) * 0.13, 4);
+                $cuerpoDocumento[count($cuerpoDocumento) - 1]['ivaItem'] = (float) number_format(($det->total / 1.13) * 0.13, 4);
+               
+            }
+            if($det->producto->producto->combustible){
+                $cuerpoDocumento[count($cuerpoDocumento) - 1]['ivaItem'] = (float) number_format((($det->total - $det->cantidad * 0.3) / 1.13) * 0.13, 2);
             }
         }
 
-        // Inicialización del resumen sin totalIva
         $resumen = [
             'totalNoSuj' => 0,
             'totalExenta' => 0,
-            'totalGravada' => $totalGravadas,
-            'subTotalVentas' => $totalGravadas,
+            'totalGravada' => (float) str_replace(',','', $totalGravadas),
+            'subTotalVentas' => (float) str_replace(',','',$totalGravadas),
             'descuNoSuj' => 0,
             'descuExenta' => 0,
             'descuGravada' => 0,
             'porcentajeDescuento' => 0,
             'totalDescu' => 0,
             'tributos' => $tributosDetallados,
-            'subTotal' => $totalGravadas,
+            'subTotal' => (float) str_replace(',','',$totalGravadas),
             'ivaRete1' => 0,
             'reteRenta' => 0,
-            'montoTotalOperacion' => $ventas->total_pagar,
+            'montoTotalOperacion' => (float) $ventas->total_pagar,
             'totalNoGravado' => 0,
-            'totalPagar' => $ventas->total_pagar,
+            'totalPagar' => (float) $ventas->total_pagar,
             'totalLetras' => $totalEnLetras,
+        ];
+        
+        // Calcular y agregar totalIva después de totalLetras si el tipo de documento no es 2
+        if ($dte->tipo_documento == 1) {
+            $resumen['totalIva'] = $det->producto->producto->combustible
+                ? (float) number_format((($ventas->total_pagar - $totalCantidad * 0.30) / 1.13) * 0.13, 2)
+                : (float) number_format(($ventas->total_pagar / 1.13) * 0.13, 2);
+        }
+        
+        // Continuar agregando el resto de los elementos
+        $resumen += [
             'saldoFavor' => 0,
             'condicionOperacion' => $ventas->condicion,
             'pagos' => [
                 [
-                    'codigo' => $pago->codigo,
-                    'montoPago' => ($ventas->condicion == 2) ? 0 : $ventas->total_pagar,
+                    'codigo' => (string) $pago->codigo,
+                    'montoPago' => (float) ($ventas->condicion == 2) ? 0 : (float) $ventas->total_pagar,
                     'referencia' => null,
                     'plazo' => ($ventas->condicion == 2) ? '01' : null,
-                    'periodo' => ($ventas->condicion == 2) ? '15' : null,
+                    'periodo' => ($ventas->condicion == 2) ? 15 : null,
                 ]
             ],
             'numPagoElectronico' => ''
         ];
+        
 
-        //version 
-        $version = 3;
-        // Calcular y agregar totalIva solo si el tipo de documento no es 2
-        if ($dte->tipo_documento == 1) {
-            $resumen['totalIva'] = $det->producto->producto->combustible
-                ? number_format((($ventas->total_pagar - $totalCantidad * 0.30) / 1.13) * 0.13, 4)
-                : number_format(($ventas->total_pagar / 1.13) * 0.13, 4);
-
-            $version = 1;
-        }
-
+       
         // Estructura completa del JSON
         $jsonData = [
-            [
-                'identificacion' => [
-                    'version' => $version,
-                    'ambiente' => $Codambiente,
-                    'tipoDte' => $dte->tipo->codigo,
-                    'numeroControl' => $dte->numero_control,
-                    'codigoGeneracion' => $dte->codigo_generacion,
-                    'tipoModelo' => $dte->modelo_facturacion,
-                    'tipoOperacion' => $dte->tipo_transmision,
-                    'tipoContingencia' => $dte->contingencia->tipoContingencia->id ?? null,
-                    'motivoContin' => $dte->contingencia->motivo_contingencia ?? null,
-                    'fecEmi' => $dte->fecha,
-                    'horEmi' => $dte->hora,
-                    'tipoMoneda' => 'USD',
+
+            'identificacion' => [
+                'version' => $dte->version,
+                'ambiente' => $Codambiente,
+                'tipoDte' => $dte->tipo->codigo,
+                'numeroControl' => $dte->numero_control,
+                'codigoGeneracion' => $dte->codigo_generacion,
+                'tipoModelo' => $dte->modelo_facturacion,
+                'tipoOperacion' => $dte->tipo_transmision,
+                'tipoContingencia' => $dte->contingencia->tipoContingencia->id ?? null,
+                'motivoContin' => $dte->contingencia->motivo_contingencia ?? null,
+                'fecEmi' => $dte->fecha,
+                'horEmi' => $dte->hora,
+                'tipoMoneda' => 'USD',
+            ],
+            'documentoRelacionado' => null,
+            'emisor' => [
+                'nit' => str_replace('-', '', $emisor->nit),
+                'nrc' => str_replace('-', '', $emisor->nrc),
+                'nombre' => $emisor->nombre,
+                'codActividad' => (string) $emisor->economicActivity->codigo,
+                'descActividad' => $emisor->economicActivity->actividad,
+                'nombreComercial' => $emisor->nombre_comercial ?? null,
+                'tipoEstablecimiento' => $emisor->establecimiento->codigo,
+                'direccion' => [
+                    'departamento' => $emisor->department->codigo,
+                    'municipio' => $emisor->municipality->codigo,
+                    'complemento' => $emisor->direccion
                 ],
-                'documentoRelacionado' => null,
-                'emisor' => [
-                    'nit' => str_replace('-', '', $emisor->nit),
-                    'nrc' => str_replace('-', '', $emisor->nrc),
-                    'nombre' => $emisor->nombre,
-                    'codActividad' => $emisor->economicActivity->codigo,
-                    'descActividad' => $emisor->economicActivity->actividad,
-                    'nombreComercial' => $emisor->nombre_comercial ?? null,
-                    'tipoEstablecimiento' => $emisor->establecimiento->codigo,
-                    'direccion' => [
-                        'departamento' => $emisor->department->codigo,
-                        'municipio' => $emisor->municipality->codigo,
-                        'complemento' => $emisor->direccion
-                    ],
-                    'telefono' => str_replace('-', '', $emisor->telefono),
-                    'correo' => $emisor->correo,
-                    'codEstableMH' => null,
-                    'codEstable' => null,
-                    'codPuntoVentaMH' => null,
-                    'codPuntoVenta' => null,
-                ],
-                'receptor' => $receptor,
-                'otrosDocumentos' => null,
-                'ventaTercero' => null,
-                'cuerpoDocumento' => $cuerpoDocumento,
-                'resumen' => $resumen,  // Aquí se incluye el resumen calculado
-                'extension' => null,
-                'apendice' => [
-                    'campo' => 'Datos del documento',
-                    'etiqueta' => 'Sello',
-                    'valor' => $dte->sello_recepcion ?? '',
-                ],
+                'telefono' => str_replace('-', '', $emisor->telefono),
+                'correo' => $emisor->correo,
+                'codEstableMH' => null,
+                'codEstable' => null,
+                'codPuntoVentaMH' => null,
+                'codPuntoVenta' => null,
+            ],
+            'receptor' => $receptor,
+            'otrosDocumentos' => null,
+            'ventaTercero' => null,
+            'cuerpoDocumento' => $cuerpoDocumento,
+            'resumen' => $resumen,  // Aquí se incluye el resumen calculado
+            'extension' => null,
+            'apendice' => [
+                [
+                'campo' => 'Datos del documento',
+                'etiqueta' => 'Sello',
+                'valor' => $dte->sello_recepcion ?? '00',
             ]
+            ],
+          //  'apendice' => null,
+
         ];
 
 
@@ -417,12 +439,12 @@ class ProductosController extends Controller
                 'numItem' => $conta++,
                 'tipoItem' => $det->producto->producto->tipo_producto_id,
                 'cantidad' => $det->cantidad,
-                'codigo' => $det->producto->producto_id,
+                'codigo' => (string) $det->producto->producto_id,
                 'uniMedida' => $det->producto->unidad->codigo,
                 'descripcion' => $det->producto->nombreProducto,
-                'precioUni' => $det->precio,
+                'precioUni' => (float) $det->precio,
                 'montoDescu' => 0,
-                'compra' =>  $det->total,
+                'compra' => (float) str_replace(',','', $det->total),
 
             ];
         }
@@ -442,15 +464,13 @@ class ProductosController extends Controller
                 'horEmi' => $dte->hora,
                 'tipoMoneda' => 'USD',
             ],
-            'documentoRelacionado' => null,
+            'documentoRelacionado' => [] ?? null,
             'emisor' => [
                 'nit' => str_replace('-', '', $emisor->nit),
                 'nrc' => str_replace('-', '', $emisor->nrc),
                 'nombre' => $emisor->nombre,
-                'codActividad' => $emisor->economicActivity->codigo,
+                'codActividad' => (string) $emisor->economicActivity->codigo,
                 'descActividad' => $emisor->economicActivity->actividad,
-                'nombreComercial' => $emisor->nombre_comercial ?? null,
-                'tipoEstablecimiento' => $emisor->establecimiento->codigo,
                 'direccion' => [
                     'departamento' => $emisor->department->codigo,
                     'municipio' => $emisor->municipality->codigo,
@@ -462,11 +482,12 @@ class ProductosController extends Controller
                 'codEstable' => null,
                 'codPuntoVentaMH' => null,
                 'codPuntoVenta' => null,
+                ],
                 'sujetoExcluido' => [
-                    'tipoDocumento' => $cliente->identificacion->codigo,
-                    'numDocumento' => $cliente->numeroDocumento,
+                    'tipoDocumento' =>(string) $cliente->identificacion->codigo,
+                    'numDocumento' => str_replace('-','',$cliente->numeroDocumento),
                     'nombre' => $cliente->nombres . ' ' . $cliente->apellidos,
-                    'codActividad' => $cliente->economicActivity->codigo ?? null,
+                    'codActividad' =>(string) $cliente->economicActivity->codigo ?? null,
                     'descActividad' =>  $cliente->economicActivity->actividad ?? null,
                     'direccion' => [
                         'departamento' => $cliente->department->codigo,
@@ -478,13 +499,13 @@ class ProductosController extends Controller
                 ],
                 'cuerpoDocumento' => $cuerpoDocumento,
                 'resumen' => [
-                    'totalCompra' => $ventas->total_pagar,
+                    'totalCompra' => (float) str_replace(',','',$ventas->total_pagar),
                     'descu' => 0,
                     'totalDescu' => 0,
-                    'subTotal' => $ventas->total_pagar,
+                    'subTotal' => (float) str_replace(',','',$ventas->total_pagar),
                     'ivaRete1' => 0,
                     'reteRenta' => 0,
-                    'totalPagar' => $ventas->total_pagar,
+                    'totalPagar' => (float) str_replace(',','',$ventas->total_pagar),
                     'totalLetras' => $totalEnLetras,
                     'condicionOperacion' => $ventas->condicion,
                     'pagos' => null,
@@ -494,16 +515,17 @@ class ProductosController extends Controller
                     [
                         "campo" => "Datos del documento",
                         "etiqueta" => "Sello",
-                        "valor" => $dte->sello_recepcion ?? '',
+                        "valor" => $dte->sello_recepcion ?? '00',
                     ]
                 ]
-            ],
+            
         ];
 
-        return response()->json([$jsonData]);
+        return response()->json($jsonData);
     }
 
-    public function AnularFactura($idVenta) {
+    public function AnularFactura($idVenta)
+    {
 
         //contenido que llevara el json
         $emisor = Emisor::with(['establecimiento', 'department', 'municipality', 'economicActivity'])
@@ -511,84 +533,93 @@ class ProductosController extends Controller
             ->first();
         $dte = DTE::with('tipo', 'ambiente', 'tipo', 'ventas', 'anulada')->where('id_venta', $idVenta)->first();
         $cliente = Cliente::with('identificacion', 'economicActivity', 'department', 'municipality')->where('id', $dte->ventas->cliente->id)->first();
-       
-         //Ambiente destino
-         $Codambiente = 0;
-         if ($dte->ambiente == 1) {
-             $Codambiente = '00';
-         } else {
-             $Codambiente = '01';
-         }
 
+        //Ambiente destino
+        $Codambiente = 0;
+        if ($dte->ambiente == 1) {
+            $Codambiente = '00';
+        } else {
+            $Codambiente = '01';
+        }
+
+        
         $jsonData = [
             'identificacion' => [
                 'version' => $dte->version,
                 'ambiente' => $Codambiente,
-                'codigoGeneracion' => strtoupper(Str::uuid()->toString()),// se crea uno nuevo
-                'fechaAnula' => now()->format('Y-m-d'),
-                'horaAnula' => now()->format('H:i:s')
+                'codigoGeneracion' => strtoupper(Str::uuid()->toString()), // se crea uno nuevo
+                'fecAnula' => now()->format('Y-m-d'),
+                'horAnula' => now()->format('H:i:s')
             ],
             'emisor' => [
                 'nit' => str_replace('-', '', $emisor->nit),
                 'nombre' => $emisor->nombre,
-                'tipoEstablecimiento' => $emisor->establecimiento->codigo,
-                'nombreEstablecimiento' => $emisor->establecimiento->valores,
-                'codEstableMH' => null,
-                'codEstable' => null,
-                'codPuntoVentaMH' => null,
-                'codPuntoVenta' => null,
+                'numFacturador' => $emisor->id,
+                'tipoEstablecimiento' => (string) $emisor->establecimiento->codigo,
+                'codEstablecimiento' => null,
+                'nomEstablecimiento' => $emisor->nombre_establecimiento, //ver
+                'puntoVenta' => null,
                 'telefono' => $emisor->telefono,
                 'correo' => $emisor->correo,
             ],
             'documento' => [
-                'tipoDTE' => $dte->tipo->codigo,
+                'tipoDte' => (string) $dte->tipo->codigo,
                 'codigoGeneracion' => $dte->codigo_generacion,
                 'selloRecibido' => $dte->sello_recepcion ?? '',
                 'numeroControl' => $dte->numero_control,
-                'fechaEmision' => $dte->fecha,
-                'monto' => $dte->ventas->tipo_documento == 1 || $dte->ventas->tipo_documento == 2 ? $dte->ventas->total_pagar : 0,  
-                'codigoGeneracionR' => $dte->anulada->codigo_generacion_reemplazo ?? null, 
-                'tipoDocumento' => $cliente->identificacion->codigo,
-                'numDocumento' => $cliente->numeroDocumento,
+                'fecEmi' => $dte->fecha,
+                'montoIva' => (float) str_replace(',','',$dte->ventas->tipo_documento == 1 ? number_format(($dte->ventas->total_pagar/1.13)*0.13,2) : 0),
+                //'codigoGeneracionR' => $dte->anulada->codigo_generacion_reemplazo ?? null,
+                //'tipoDocumento' => (string) $cliente->identificacion->codigo,
+                //'numDocumento' => str_replace('-', '', $cliente->numeroDocumento),
+                //'nombre' => $cliente->nombres . ' ' . $cliente->apellidos,
+                // 'monto' => (float) str_replace(',','',$dte->ventas->tipo_documento == 1 || $dte->ventas->tipo_documento == 2 ? $dte->ventas->total_pagar : 0),
+                //'telefono' => $cliente->telefono,
+                //'correo' => $cliente->correoElectronico
+            ],
+            'receptor' => [
+                'tipoDocumento' => (string) $cliente->identificacion->codigo,
+                'numDocumento' => str_replace('-', '', $cliente->numeroDocumento),
                 'nombre' => $cliente->nombres . ' ' . $cliente->apellidos,
-                'telefono' => $cliente->telefono,
-                'correo' => $cliente->correoElectronico
+                // 'monto' => (float) str_replace(',','',$dte->ventas->tipo_documento == 1 || $dte->ventas->tipo_documento == 2 ? $dte->ventas->total_pagar : 0),
+              //  'telefono' => $cliente->telefono,
+                //'correo' => $cliente->correoElectronico
             ],
             'motivo' => [
                 'tipoAnulacion' => $dte->anulada->tipo_invalidacion_id,
-                'motivoAnulacion' => $dte->anulada->motivo_invalidacion,
+                'motivoAnulacion' => $dte->anulada->motivo_invalidacion ?? null,
                 'nombreResponsable' => $dte->anulada->responsableAnular->nombre,
-                'docResponsable' => $dte->anulada->responsableAnular->tipoDocumento->codigo,    
-                'numResponsable' => $dte->anulada->responsableAnular->numero_documento,
+                'tipDocResponsable' =>  (float) $dte->anulada->responsableAnular->tipoDocumento->codigo,
+                'numDocResponsable' => str_replace('-', '', $dte->anulada->responsableAnular->numero_documento),
                 'nombreSolicita' => $dte->anulada->solicitanteAnular->nombres . ' ' . $dte->anulada->solicitanteAnular->apellidos,
-                'tipDocSolicita' => $dte->anulada->solicitanteAnular->identificacion->codigo,
+                'tipDocSolicita' => (float) $dte->anulada->solicitanteAnular->identificacion->codigo,
                 'numDocSolicita' => $dte->anulada->solicitanteAnular->numeroDocumento,
-            ],
-            'sello' => 'DLFDM',
+            ]
         ];
         return response()->json([$jsonData]);
     }
 
-    public function Contingencia($idConti){
+    public function Contingencia($idConti)
+    {
 
         //contenido que llevara el json
         $emisor = Emisor::with(['establecimiento', 'department', 'municipality', 'economicActivity'])
             ->where('id', 1)
             ->first();
         $dte = DTE::with('tipo', 'ambiente', 'ventas', 'anulada')->where('contingencia_id', $idConti)->get();
-       
-        $primerDTE = $dte->first();
-         //Ambiente destino
-         $Codambiente = 0;
-         if ($primerDTE->ambiente == 1) {
-             $Codambiente = '00';
-         } else {
-             $Codambiente = '01';
-         }
 
-         $contador = 1;
+        $primerDTE = $dte->first();
+        //Ambiente destino
+        $Codambiente = 0;
+        if ($primerDTE->ambiente == 1) {
+            $Codambiente = '00';
+        } else {
+            $Codambiente = '01';
+        }
+
+        $contador = 1;
         foreach ($dte as $det) {
-            $detalleDTE [] = [
+            $detalleDTE[] = [
                 'noItem' => $contador++,
                 'tipoDoc' => $det->tipo->codigo,
                 'codigoGeneracion' => $det->codigo_generacion,
@@ -601,7 +632,7 @@ class ProductosController extends Controller
             'identificacion' => [
                 'version' => $primerDTE->version,
                 'ambiente' => $Codambiente,
-                'codigoGeneracion' => strtoupper(Str::uuid()->toString()),// se crea uno nuevo,
+                'codigoGeneracion' => strtoupper(Str::uuid()->toString()), // se crea uno nuevo,
                 'fTransmision' => now()->format('Y-m-d'),
                 'hTransmision' => now()->format('H:i:s')
             ],
@@ -623,7 +654,7 @@ class ProductosController extends Controller
                 'fFin' => $primerDTE->contingencia->fechaFin ?? null,
                 'hInicio' => $primerDTE->contingencia->horaInicio ?? null,
                 'hFin' => $primerDTE->contingencia->horaFin ?? null,
-                'tipoContingencia' => $primerDTE->contingencia->tipoContingencia->id ?? null, 
+                'tipoContingencia' => $primerDTE->contingencia->tipoContingencia->id ?? null,
                 'motivoContingencia' => $primerDTE->contingencia->motivo_contingencia ?? null,
             ],
             'sello' => 'DLFDM',
@@ -633,14 +664,63 @@ class ProductosController extends Controller
     }
 
     //prueba segunda base
-    public function second(){
+    public function second()
+    {
         $clientes = DB::connection('mysql_secondary')->table('cliente')->get();
         $clientesbase1 = Cliente::all();
 
         return response()->json([
-            'base 2' =>$clientes,
-            'base 1' =>$clientesbase1
+            'base 2' => $clientes,
+            'base 1' => $clientesbase1
         ]);
     }
 
+    public function user()
+    {
+
+        $json = $this->prueba(227);
+        $dteJson = $json->getData();
+
+        // Asegurarte de que $dteJson no esté vacío y obtener el primer elemento
+        $dteJson = !empty($dteJson) ? $dteJson[0] : null;
+
+        // Firmar documento y guardar la firma
+        $userFirmador = DteAuth::get()->first();
+        /*   $response = [
+            'nit' => $userFirmador->user,
+            'activo' => $userFirmador->activo ? 'true' : 'false',
+            'passwordPri' => Crypt::decrypt($userFirmador->pwd),
+            // Directamente asignar el primer elemento del array a dteJson
+            'dteJson' => $dteJson,
+        ];*/
+
+        try {
+            $passwordDesencriptada = Crypt::decrypt($userFirmador->passwordPri);
+        } catch (DecryptException $e) {
+            return response()->json(['error' => 'Error al desencriptar la contraseña.'], 400);
+        }
+
+
+        $response = Http::withHeaders([
+            'Content-Type' => 'application/json',
+        ])->post('http://127.0.0.1:8113/firmardocumento/', [
+            'nit' => $userFirmador->user,
+            'activo' => $userFirmador->activo ? 'true' : 'false',
+            'passwordPri' => $passwordDesencriptada,
+            'dteJson' => $dteJson,
+        ]);
+
+        if ($response->failed()) {
+            // Maneja la respuesta fallida
+            return response()->json(['error' => 'Error al enviar la solicitud.'], 500);
+        }
+
+        //Body
+        $response = $response->json();
+        $body = $response['body'];
+
+
+
+        return response()->json($response);
+    }
 }

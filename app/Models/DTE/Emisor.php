@@ -30,10 +30,15 @@ class Emisor extends Model
         'correo',
         'nombre_comercial',
         'tipo_establecimiento_id',
+        'nombre_establecimiento',
+        'num_facturador',
         'municipio_id',
         'departamento_id',
         'contador',
         'rol_contador',
+        'nombre_establecimiento',
+        'num_facturador',
+        'ultimo_num_control'
     ];
 
     public $hidden = [

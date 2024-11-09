@@ -319,6 +319,12 @@ class ComprasController extends Controller
                     'cantidad' => $producto['cantidad']
                 ]);
 
+                //Llamar el costo promedio
+                $this->CostoPromedio($producto['producto_id']);
+
+                
+
+
                 // Obtener el inventario de la unidad de medida seleccionada
                 $unidadSeleccionada = Inventario::where('producto_id', $producto['producto_id'])
                     ->where('unidad_medida_id', $producto['unidad_medida_id'])
@@ -426,5 +432,58 @@ class ComprasController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function CostoPromedio($id)
+    {
+        $detalleCompra = DetalleCompra::with('producto', 'unidad')->where('producto_id', $id)->get();
+
+          // Verifica si hay detalles de compra
+    if ($detalleCompra->isEmpty()) {
+        return response()->json([
+            'message' => 'No se encontraron detalles de compra para el producto.',
+            'data' => [],
+        ], 404);
+    }
+
+        $total = 0;
+        $cantidad = 0;
+
+        foreach ($detalleCompra as $detalle) {
+            // Calcular el total para cada registro (BIEN)
+            $totalUni = $detalle->total;
+
+             // Obtener el inventario específico basado en la unidad de medida
+            $inventario = Inventario::where('producto_id', $detalle->producto_id)
+                ->where('unidad_medida_id', $detalle->unidad_medida_id)
+                ->first();
+
+
+            $cantidadUni = $detalle->cantidad / $inventario->equivalencia;
+            // Acumular el total y la cantidad (BIEN)
+            $total += $totalUni;
+            $cantidad += $cantidadUni;
+        }
+
+        // Calcular el promedio ponderado, asegurando que cantidad no sea cero
+        $promedio = $cantidad > 0 ? $total / $cantidad : 0;
+
+        //Guardar el promedio en el inventario
+        $inventario = Inventario::where('producto_id', $detalleCompra[0]->producto_id)->get();
+        foreach ($inventario as $inv) {
+            $inv->precioCosto = $promedio / $inv->equivalencia;
+            $inv->save();
+        }
+
+        return response()->json([
+            'message' => 'Costo promedio de productos',
+            'data' => [
+                'producto_id' => $detalleCompra[0]->producto_id,
+                'producto' => $detalleCompra[0]->producto->nombreProducto,
+                'total' => $total,
+                'cantidad' => $cantidad,
+                'promedio' => $promedio
+            ],
+        ], 200);
     }
 }

@@ -7,6 +7,7 @@ use App\Models\DTE\Contingencia;
 use App\Models\DTE\DTE;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class ContingenciaController extends Controller
 {
@@ -27,8 +28,10 @@ class ContingenciaController extends Controller
                 'tipo_contingencia_id' => $contingencia->tipo_contingencia_id,
                 'motivo_contingencia' => $contingencia->motivo_contingencia,
                 'estado_contingencia' => $contingencia->estado_contingencia,
+                'responsable_id' => $contingencia->responsable_id,
                 'estado' => $contingencia->fechaFin == '' ? 'Iniciado' : 'Finalizada',
                 'sello_recepcion' => $contingencia->sello_recepcion,
+                'codigo_generacion' => $contingencia->codigo_generacion,
                 'tipo_contingencia' => [
                 'id' => $contingencia->tipoContingencia->id,
                 'nombre' => $contingencia->tipoContingencia->nombre
@@ -81,6 +84,19 @@ class ContingenciaController extends Controller
 
     public function IniciarContingencia(Request $request)
 {
+    // Validar los datos enviados por el cliente
+    $validator = Validator::make($request->all(), [
+        'tipo_contingencia_id' => 'required',
+        'responsable_id' => 'required',
+    ]);
+
+    // Verificar si hay errores en la validación
+    if ($validator->fails()) {
+        return response()->json([
+            'message' => 'Error de validación',
+            'errors' => $validator->errors(),
+        ], 400); // Código de estado 400 para solicitud incorrecta
+    }
     // Verificar si hay alguna contingencia activa sin fechaFin
     $contingenciasSinFechaFin = Contingencia::whereNull('fechaFin')->get();
 
@@ -99,6 +115,7 @@ class ContingenciaController extends Controller
         'tipo_contingencia_id' => $request->tipo_contingencia_id,
         'motivo_contingencia' => $request->motivo_contingencia,
         'estado_contingencia' => 1,
+        'responsable_id' => $request->responsable_id,
     ]);
 
     // Devolver la respuesta en formato JSON con un mensaje y los datos

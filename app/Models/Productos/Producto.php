@@ -27,6 +27,7 @@ class Producto extends Model
     protected $fillable = [
         'nombreProducto',
         'tipo_producto_id',
+        'combustible',
     ];
 
     public $hidden = [

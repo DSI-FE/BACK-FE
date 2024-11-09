@@ -25,7 +25,8 @@ class VentasAnuladas extends Model
         'motivo_invalidacion',
         'responsable_id',
         'solicitante_id',
-        'codigo_generacion_reemplazo'
+        'codigo_generacion_reemplazo',
+        'firma'
     ];
 
     public $hidden = [

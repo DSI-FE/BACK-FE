@@ -24,10 +24,12 @@ class Contingencia extends Model
         'fechaFin',
         'horaInicio',
         'horaFin',
+        'codigo_generacion',
         'tipo_contingencia_id',
         'motivo_contingencia',
         'estado_contingencia',
         'sello_recepcion',
+        'responsable_id'
     ];
 
     public $hidden = [
@@ -46,5 +48,11 @@ class Contingencia extends Model
         public function tipoContingencia()
         {
             return $this->belongsTo(TipoContingencia::class, 'tipo_contingencia_id');
+        }
+
+        // Definir relación con el responsable
+        public function responsable()
+        {
+            return $this->belongsTo(Responsable::class, 'responsable_id');
         }
 }

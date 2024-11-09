@@ -37,7 +37,8 @@ class Venta extends Model
         'condicion',
         'tipo_documento',
         'cliente_id',
-        'tipo_pago_id'
+        'tipo_pago_id',
+        'retencion'
     ];
 
     protected $hidden = [
