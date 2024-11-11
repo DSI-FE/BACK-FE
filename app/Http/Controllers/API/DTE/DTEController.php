@@ -175,7 +175,7 @@ class DTEController extends Controller
             ];
             //Envio del correo
             $cliente = Cliente::where('id', $dte->ventas->cliente_id)->first();
-            Mail::to('alfonsogaldamez2@gmail.com')->send(
+            Mail::to($cliente->correoElectronico)->send(
                 new MiCorreo(
                     $cliente->nombres . ' ' . $cliente->apellidos,
                     $dte->fecha,

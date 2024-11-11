@@ -344,6 +344,9 @@ class VentasController extends Controller
         $emisor = Emisor::with(['department', 'municipality', 'economicActivity'])
             ->where('id', 1)->first();
 
+        //imagen
+        $imagePath = public_path('storage/logos/IFLOSERSA.png');
+
         //convertir el total a letras
         $numeroLetras = new NumberToWords();
         $resultado = $numeroLetras->getNumberTransformer('es');
@@ -369,11 +372,12 @@ class VentasController extends Controller
         $pdf->writeHTML('<h3 style="text-align: center; font-size: 13px; font-family: \'Times New Roman\', Times, serif;">DOCUMENTO TRIBUTARIO ELECTRONICO</h3>');
         $pdf->writeHTML('<h3 style="text-align: center; font-size: 13px; font-family: \'Times New Roman\', Times, serif;">' . $dte->tipo->nombre . '</h3>');
         // Generar el código QR en el centro
-        $pdf->write2DBarcode($url, 'QRCODE,H', 92, 25, 25, 25, array('border' => false), 'N');
-
+        $pdf->writeHTML('<img src="' . $imagePath . '" alt="Logo IFLOSERSA" width="150" />');
+        $pdf->write2DBarcode($url, 'QRCODE,H', 100, 23, 25, 25, array('border' => false), 'N');
+        
         // Definir el contenido de la tabla
         $tablaDTE = '
-<table border="0" cellspacing="5" cellpadding="5" width="100%; ">
+<table border="0" cellspacing="2" cellpadding="2" width="100%; ">
     <tr>
         <td style="text-align: left; width: 55%; font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
             <p>Código de generación: <br>' . $dte->codigo_generacion . '</p>
@@ -395,7 +399,7 @@ class VentasController extends Controller
         $tablaEmisor = '
 <table style="font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
     <tr>
-        <th style="text-align: center; border: 1px solid gray;  height: 25px; background-color: #73E1B7; font-size: 12px;"><strong>Emisor</strong></th>
+        <th style="text-align: center; border: 1px solid gray;  height: 25px; background-color: #DCDCDC; font-size: 12px;"><strong>Emisor</strong></th>
     </tr>
     <tr>
        <td style="font-family: \'Times New Roman\', Times, serif; font-weight: bold; font-size: 14px;">' . $emisor->nombre . '</td>
@@ -428,7 +432,7 @@ class VentasController extends Controller
         $tablaCliente = '
 <table style=" font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
     <tr>
-         <th style="text-align: center; border: 1px solid gray;  height: 25px; background-color: #73E1B7;  font-size: 12px;"><strong>Receptor</strong></th>
+         <th style="text-align: center; border: 1px solid gray;  height: 25px; background-color: #DCDCDC;  font-size: 12px;"><strong>Receptor</strong></th>
     </tr>
     <tr>
          <th style="font-family: \'Times New Roman\', Times, serif; font-weight: bold; font-size: 14px;">' . $dte->ventas->cliente_nombre . '</th>
@@ -458,7 +462,7 @@ class VentasController extends Controller
 
         $tablaContenido = ' <br><br><br>
 <table style="border-collapse: collapse; width: 100%;  font-size: 10px; font-family: \'Times New Roman\', Times, serif;">
-    <tr style="background-color: #23DEA1; text-align: center; font-weight: bold">
+    <tr style="background-color: #DCDCDC; text-align: center; font-weight: bold">
          <th style="width: 23px;">N°</th>
          <th style="width: 46px;">Cantidad</th>
          <th style="width: 200px;">Descripción</th>
@@ -571,7 +575,7 @@ class VentasController extends Controller
             <td colspan="1"><strong>$ ' . $dte->ventas->total_pagar . '</strong></td>
         </tr><hr>
         <tr>
-            <td colspan="9" style="text-align: left; background-color: #23DEA1; height: 25px;">VALOR EN LETRAS:  ' . $totalEnLetras . '</td>
+            <td colspan="9" style="text-align: left; background-color: #DCDCDC; height: 25px;">VALOR EN LETRAS:  ' . $totalEnLetras . '</td>
         </tr>';
 
         $tablaContenido .= '
@@ -586,15 +590,6 @@ class VentasController extends Controller
 
         //tabla de productos
         $pdf->writeHTMLCell('', '', '', '', $tablaContenido, 0, 1, 0, true, 'L', true);
-
-        //JSON que se le enviará al correo
-        $jsonData = ([
-            'data' => $dte,
-            'detalle' => $detalle
-        ]);
-        set_time_limit(120); // Establecer el tiempo de ejecución a 120 segundos
-
-
 
         return response($pdf->Output('Factura_' . $dte->codigo_generacion . '.pdf', 'S'))
         ->header('Content-Type', 'application/pdf');

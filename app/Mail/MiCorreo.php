@@ -37,7 +37,7 @@ class MiCorreo extends Mailable
     public function build()
     {
         return $this->view('mails.mi_correo')
-                    ->subject('DTE - Ferreteria Flores')
+                    ->subject('DTE - Factura Electrónica')
                     ->attachData($this->contenidoPDF, 'DTE-'. $this->dte->codigo_generacion .'.pdf', [
                         'mime' => 'application/pdf',
                     ])
