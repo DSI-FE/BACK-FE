@@ -93,13 +93,14 @@ return [
     'passwords' => [
         'users' => [
             'provider' => 'users',
-            'table' => 'password_resets',
+            // 'table' => 'password_resets',
+            'table' => 'password_reset_tokens', 
             'expire' => 60,
             'throttle' => 60,
         ],
     ],
 
-    'mp_dgehm' => env('MP_DGHEM'),
+    'mp_flores' => env('MP_FLORES'),
 
     /*
     |--------------------------------------------------------------------------
