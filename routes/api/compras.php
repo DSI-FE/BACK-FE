@@ -10,3 +10,4 @@ Route::get('/compras', [ComprasController::class, 'index']);
 Route::get('/detallecompra/{numero}', [ComprasController::class, 'detalleCompra']);
 Route::patch('/comprasUpd/{id}', [ComprasController::class, 'update']);
 Route::delete('/delete/{id}', [ComprasController::class, 'delete']);
+Route::get('/costoPromedio/{id}', [ComprasController::class, 'costoPromedio']);

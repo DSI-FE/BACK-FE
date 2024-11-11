@@ -35,6 +35,10 @@ class DTE extends Model
         'tipo_contingencia',
         'motivo_contingencia',
         'tipo_documento',
+        'anulada_id',
+        'contingencia_id',
+        'firma',
+        'qr_code'
     ];
 
     public $hidden = [
@@ -59,6 +63,22 @@ class DTE extends Model
     public function tipo()
     {
         return $this->belongsTo(TipoDocumento::class,  'tipo_documento');
+    }
+    public function anulada()
+    {
+        return $this->belongsTo(VentasAnuladas::class, 'anulada_id');
+    }
+    public function contingencia()
+    {
+        return $this->belongsTo(Contingencia::class, 'contingencia_id');
+    }
+    public function tipoTransmision()
+    {
+        return $this->belongsTo(TipoTransmision::class, 'tipo_transmision');
+    }
+    public function modeloFacturacion()
+    {
+        return $this->belongsTo(ModeloFacturacion::class, 'modelo_facturacion');
     }
  
 

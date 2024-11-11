@@ -86,7 +86,12 @@ class InventarioController extends Controller
         try {
             // Crear o encontrar el producto
             $producto = Producto::firstOrCreate(
-                ['nombreProducto' => $request->nombreProducto]
+                [
+                    'nombreProducto' => $request->nombreProducto,
+                    'tipo_producto_id' => $request->tipo_producto_id,
+                    'combustible' => $request->combustible
+                
+                ]
             );
 
             // Encontrar la unidad de medida
@@ -191,7 +196,8 @@ class InventarioController extends Controller
             'equivalencia' =>$inventario->equivalencia,
             'existencias' => $inventario->existencias,
             'precioCosto' => $inventario->precioCosto,
-            'precioVenta' => $inventario->precioVenta
+            'precioVenta' => $inventario->precioVenta,
+            'tipo_producto_id' => $inventario->producto->tipo_producto_id
         ];
     });
 
@@ -208,7 +214,7 @@ class InventarioController extends Controller
     {
         // Obtener inventarios por id
         $inventarios = Inventario::with(['producto', 'unidad'])
-            ->where('id', $codigo)
+            ->where('producto_id', $codigo)
             ->get();
 
         if ($inventarios->isEmpty()) {

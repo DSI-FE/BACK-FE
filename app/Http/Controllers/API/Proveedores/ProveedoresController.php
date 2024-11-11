@@ -22,7 +22,6 @@ class ProveedoresController extends Controller
     {
         // Validar los datos de entrada
         $validator = Validator::make($request->all(), [
-            'codigo' => 'required|string|max:50',
             'nrc' => 'nullable|string|max:50',
             'nombre' => 'required|string|max:100',
             'nit' => 'required|string|max:50',

@@ -11,21 +11,75 @@ use Illuminate\Support\Facades\Validator;
 use App\Models\Productos\Producto;
 use App\Models\Productos\UnidadMedida;
 use Illuminate\Support\Facades\DB;
+use App\Helpers\StringsHelper;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\Rule;
 
 class ComprasController extends Controller
 {
 
-    //Funcion para obtener todas las compras
-    public function index()
+    public function index(Request $request)
     {
-        // Obtener todos los productos
-        $compras = Compra::with('proveedor')->get();
+        // Reglas de validación para los parámetros de consulta
+        $rules = [
+            'search' => ['nullable', 'max:250'],
+            'perPage' => ['nullable', 'integer', 'min:1'],
+            'sort' => ['nullable'],
+            'sort.key' => ['nullable', Rule::in(['id', 'proveedor_id', 'total', 'proveedores.nombre'])],
+            'sort.order' => ['nullable', Rule::in(['asc', 'desc'])],
+        ];
 
-        // Devolver la respuesta en formato JSON con un mensaje y los datos
-        return response()->json([
+        $messages = [
+            'search.max' => 'El criterio de búsqueda enviado excede la cantidad máxima permitida.',
+            'perPage.integer' => 'Solicitud de cantidad de registros por página con formato irreconocible.',
+            'perPage.min' => 'La cantidad de registros por página no puede ser menor a 1.',
+            'sort.key.in' => 'El valor de clave de ordenamiento es inválido.',
+            'sort.order.in' => 'El valor de ordenamiento es inválido.',
+        ];
+
+        // Validar los parámetros de consulta
+        $validator = Validator::make($request->all(), $rules, $messages);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        // Obtener los parámetros de consulta
+        $search = $request->query('search', '');
+        $perPage = $request->query('perPage', 5);
+
+        $sort = json_decode($request->input('sort'), true);
+        $orderBy = isset($sort['key']) && !empty($sort['key']) ? $sort['key'] : 'id';
+        $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
+
+        // Obtener las compras con filtrado y ordenamiento
+        $compras = Compra::with('proveedor')
+            ->where(function (Builder $query) use ($search) {
+                $query->whereHas('proveedor', function (Builder $q) use ($search) {
+                    $q->where('nombre', 'like', '%' . $search . '%');
+                });
+            });
+
+        $compras = $compras->orderBy($orderBy, $orderDirection);
+        $compras = $compras->paginate($perPage);
+
+        // Preparar la respuesta en formato JSON
+        $response = [
             'message' => 'lista de compras',
-            'data' => $compras,
-        ], 200);
+            'data' => $compras->items(),
+            'search' => $search,
+            'sort' => [
+                'orderBy' => $orderBy,
+                'orderDirection' => $orderDirection,
+            ],
+            'pagination' => [
+                'current_page' => $compras->currentPage(),
+                'last_page' => $compras->lastPage(),
+                'per_page' => $compras->perPage(),
+                'total' => $compras->total(),
+            ]
+        ];
+
+        return response()->json($response, 200);
     }
 
     //Funcion para actualizar una compra
@@ -42,56 +96,56 @@ class ComprasController extends Controller
             'comprasGravadas' => 'required',
             'ivaPercibido' => 'required',
         ]);
-    
+
         if ($validator->fails()) {
             return response()->json([
                 'message' => 'Errores de validación',
                 'errors' => $validator->errors(),
             ], 422);
         }
-    
+
         $compra = Compra::find($id);
         if (!$compra) {
             return response()->json([
                 'message' => 'Compra no encontrada.',
             ], 404);
         }
-    
+
         // Empezar una transacción
         DB::beginTransaction();
         try {
             // Obtener los detalles de compra actuales
             $detalleActual = DetalleCompra::where('compra_id', $compra->id)->get();
-    
+
             // Disminuir las existencias de los detalles de compra actuales
             foreach ($detalleActual as $detalle) {
                 $unidadSeleccionada = Inventario::where('producto_id', $detalle->producto_id)
                     ->where('unidad_medida_id', $detalle->unidad_medida_id)
                     ->first();
-    
-                    if ($unidadSeleccionada) {
-                        // Disminuir las existencias de la unidad de medida seleccionada
-                        $unidadSeleccionada->existencias -= $detalle->cantidad;
-                        $unidadSeleccionada->save();
-    
-                        // Actualizar las existencias de otras unidades de medida del mismo producto
-                        $unidadesProducto = Inventario::where('producto_id', $detalle['producto_id'])->get();
-                        foreach ($unidadesProducto as $unidad) {
-                            if ($unidad->unidad_medida_id != $unidadSeleccionada->unidad_medida_id) {
-                                if ($unidadSeleccionada->equivalencia > 1) {
-                                    $unidad->existencias = $unidadSeleccionada->existencias / $unidadSeleccionada->equivalencia * $unidad->equivalencia;
-                                } else {
-                                    $unidad->existencias = $unidadSeleccionada->existencias * $unidad->equivalencia;
-                                }
-                                $unidad->save();
+
+                if ($unidadSeleccionada) {
+                    // Disminuir las existencias de la unidad de medida seleccionada
+                    $unidadSeleccionada->existencias -= $detalle->cantidad;
+                    $unidadSeleccionada->save();
+
+                    // Actualizar las existencias de otras unidades de medida del mismo producto
+                    $unidadesProducto = Inventario::where('producto_id', $detalle['producto_id'])->get();
+                    foreach ($unidadesProducto as $unidad) {
+                        if ($unidad->unidad_medida_id != $unidadSeleccionada->unidad_medida_id) {
+                            if ($unidadSeleccionada->equivalencia > 1) {
+                                $unidad->existencias = $unidadSeleccionada->existencias / $unidadSeleccionada->equivalencia * $unidad->equivalencia;
+                            } else {
+                                $unidad->existencias = $unidadSeleccionada->existencias * $unidad->equivalencia;
                             }
+                            $unidad->save();
                         }
                     }
+                }
             }
-    
+
             // Eliminar los detalles de la compra que se están modificando
             DetalleCompra::where('compra_id', $compra->id)->delete();
-    
+
             // Actualizar la compra
             $compra->update([
                 'fecha' => $request->fecha,
@@ -103,15 +157,15 @@ class ComprasController extends Controller
                 'totalCompra' => $request->totalCompra,
                 'proveedor_id' => $request->proveedor_id
             ]);
-    
+
             $detallesNuevos = [];
-    
+
             // Iterar sobre los productos y crear los registros de detalle de compra
             foreach ($request->productos as $producto) {
                 $unidadSeleccionada = Inventario::where('producto_id', $producto['producto_id'])
                     ->where('unidad_medida_id', $producto['unidad_medida_id'])
                     ->first();
-    
+
                 if (!$unidadSeleccionada) {
                     // Revertir la transacción en caso de error
                     DB::rollback();
@@ -121,7 +175,7 @@ class ComprasController extends Controller
                         'unidad_medida_id' => $producto['unidad_medida_id']
                     ], 400);
                 }
-    
+
                 // Crear los nuevos detalles de compra
                 $detalleCompra = DetalleCompra::create([
                     'compra_id' => $compra->id,
@@ -132,9 +186,9 @@ class ComprasController extends Controller
                     'total' => $producto['total'],
                     'cantidad' => $producto['cantidad']
                 ]);
-    
+
                 $detallesNuevos[] = $detalleCompra;
-    
+
                 // Incrementar las existencias con los nuevos detalles
                 if ($unidadSeleccionada) {
                     // Aumentar las existencias de la unidad de medida seleccionada
@@ -155,27 +209,27 @@ class ComprasController extends Controller
                     }
                 }
             }
-    
+
             // Confirmar la transacción
             DB::commit();
-    
+
             return response()->json([
                 'message' => 'Compra actualizada exitosamente',
                 'compra' => $compra,
                 'detalles' => $detallesNuevos
             ], 200);
-         } catch (\Exception $e) {
+        } catch (\Exception $e) {
             // Revertir la transacción en caso de error
             DB::rollback();
             return response()->json([
                 'message' => 'Error al actualizar la compra',
                 'error' => $e->getMessage(),
             ], 500);
-         }
+        }
     }
 
 
-    
+
 
 
     public function detalleCompra($numero)
@@ -265,6 +319,12 @@ class ComprasController extends Controller
                     'cantidad' => $producto['cantidad']
                 ]);
 
+                //Llamar el costo promedio
+                $this->CostoPromedio($producto['producto_id']);
+
+                
+
+
                 // Obtener el inventario de la unidad de medida seleccionada
                 $unidadSeleccionada = Inventario::where('producto_id', $producto['producto_id'])
                     ->where('unidad_medida_id', $producto['unidad_medida_id'])
@@ -319,59 +379,111 @@ class ComprasController extends Controller
     }
 
     public function delete($id)
-{
-    // Empezar una transacción
-    DB::beginTransaction();
-    try {
-        // Obtener los detalles de compra para la compra especificada
-        $detallesCompra = DetalleCompra::where('compra_id', $id)->get();
+    {
+        // Empezar una transacción
+        DB::beginTransaction();
+        try {
+            // Obtener los detalles de compra para la compra especificada
+            $detallesCompra = DetalleCompra::where('compra_id', $id)->get();
 
-        // Disminuir las existencias en el inventario según los detalles de compra
-        foreach ($detallesCompra as $detalle) {
-            $unidadSeleccionada = Inventario::where('producto_id', $detalle->producto_id)
-                ->where('unidad_medida_id', $detalle->unidad_medida_id)
-                ->first();
+            // Disminuir las existencias en el inventario según los detalles de compra
+            foreach ($detallesCompra as $detalle) {
+                $unidadSeleccionada = Inventario::where('producto_id', $detalle->producto_id)
+                    ->where('unidad_medida_id', $detalle->unidad_medida_id)
+                    ->first();
 
-            if ($unidadSeleccionada) {
-                // Disminuir las existencias de la unidad de medida seleccionada
-                $unidadSeleccionada->existencias -= $detalle->cantidad;
-                $unidadSeleccionada->save();
+                if ($unidadSeleccionada) {
+                    // Disminuir las existencias de la unidad de medida seleccionada
+                    $unidadSeleccionada->existencias -= $detalle->cantidad;
+                    $unidadSeleccionada->save();
 
-                // Actualizar las existencias de otras unidades de medida del mismo producto
-                $unidadesProducto = Inventario::where('producto_id', $detalle->producto_id)->get();
-                foreach ($unidadesProducto as $unidad) {
-                    if ($unidad->unidad_medida_id != $unidadSeleccionada->unidad_medida_id) {
-                        if ($unidadSeleccionada->equivalencia > 1) {
-                            $unidad->existencias = $unidadSeleccionada->existencias / $unidadSeleccionada->equivalencia * $unidad->equivalencia;
-                        } else {
-                            $unidad->existencias = $unidadSeleccionada->existencias * $unidad->equivalencia;
+                    // Actualizar las existencias de otras unidades de medida del mismo producto
+                    $unidadesProducto = Inventario::where('producto_id', $detalle->producto_id)->get();
+                    foreach ($unidadesProducto as $unidad) {
+                        if ($unidad->unidad_medida_id != $unidadSeleccionada->unidad_medida_id) {
+                            if ($unidadSeleccionada->equivalencia > 1) {
+                                $unidad->existencias = $unidadSeleccionada->existencias / $unidadSeleccionada->equivalencia * $unidad->equivalencia;
+                            } else {
+                                $unidad->existencias = $unidadSeleccionada->existencias * $unidad->equivalencia;
+                            }
+                            $unidad->save();
                         }
-                        $unidad->save();
                     }
                 }
             }
+
+            // Eliminar los detalles de la compra
+            DetalleCompra::where('compra_id', $id)->delete();
+
+            // Eliminar la compra
+            Compra::where('id', $id)->delete();
+
+            // Confirmar la transacción
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Compra eliminada exitosamente',
+            ], 200);
+        } catch (\Exception $e) {
+            // Revertir la transacción en caso de error
+            DB::rollback();
+            return response()->json([
+                'message' => 'Error al eliminar la compra',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function CostoPromedio($id)
+    {
+        $detalleCompra = DetalleCompra::with('producto', 'unidad')->where('producto_id', $id)->get();
+
+          // Verifica si hay detalles de compra
+    if ($detalleCompra->isEmpty()) {
+        return response()->json([
+            'message' => 'No se encontraron detalles de compra para el producto.',
+            'data' => [],
+        ], 404);
+    }
+
+        $total = 0;
+        $cantidad = 0;
+
+        foreach ($detalleCompra as $detalle) {
+            // Calcular el total para cada registro (BIEN)
+            $totalUni = $detalle->total;
+
+             // Obtener el inventario específico basado en la unidad de medida
+            $inventario = Inventario::where('producto_id', $detalle->producto_id)
+                ->where('unidad_medida_id', $detalle->unidad_medida_id)
+                ->first();
+
+
+            $cantidadUni = $detalle->cantidad / $inventario->equivalencia;
+            // Acumular el total y la cantidad (BIEN)
+            $total += $totalUni;
+            $cantidad += $cantidadUni;
         }
 
-        // Eliminar los detalles de la compra
-        DetalleCompra::where('compra_id', $id)->delete();
+        // Calcular el promedio ponderado, asegurando que cantidad no sea cero
+        $promedio = $cantidad > 0 ? $total / $cantidad : 0;
 
-        // Eliminar la compra
-        Compra::where('id', $id)->delete();
-
-        // Confirmar la transacción
-        DB::commit();
+        //Guardar el promedio en el inventario
+        $inventario = Inventario::where('producto_id', $detalleCompra[0]->producto_id)->get();
+        foreach ($inventario as $inv) {
+            $inv->precioCosto = $promedio / $inv->equivalencia;
+            $inv->save();
+        }
 
         return response()->json([
-            'message' => 'Compra eliminada exitosamente',
+            'message' => 'Costo promedio de productos',
+            'data' => [
+                'producto_id' => $detalleCompra[0]->producto_id,
+                'producto' => $detalleCompra[0]->producto->nombreProducto,
+                'total' => $total,
+                'cantidad' => $cantidad,
+                'promedio' => $promedio
+            ],
         ], 200);
-    } catch (\Exception $e) {
-        // Revertir la transacción en caso de error
-        DB::rollback();
-        return response()->json([
-            'message' => 'Error al eliminar la compra',
-            'error' => $e->getMessage(),
-        ], 500);
     }
-}
-
 }

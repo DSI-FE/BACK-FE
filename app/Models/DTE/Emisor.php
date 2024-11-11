@@ -29,9 +29,16 @@ class Emisor extends Model
         'telefono',
         'correo',
         'nombre_comercial',
-        'tipo_establecimiento',
+        'tipo_establecimiento_id',
+        'nombre_establecimiento',
+        'num_facturador',
         'municipio_id',
         'departamento_id',
+        'contador',
+        'rol_contador',
+        'nombre_establecimiento',
+        'num_facturador',
+        'ultimo_num_control'
     ];
 
     public $hidden = [
@@ -57,6 +64,18 @@ class Emisor extends Model
         return $this->belongsTo('App\Models\Clientes\ActividadEconomica', 'actividad_economica');
     }
 
+    public function establecimiento()
+    {
+        return $this->belongsTo('App\Models\DTE\TipoEstablecimiento', 'tipo_establecimiento_id');
+    }
+
+    //Atributo para obtener el nombre del establecimiento
+    public function getEstablecimientoNameAttribute()
+    {
+        return $this->establecimiento->valores;
+    }
+    
+
     // Atributo para obtener el nombre del departamento
     public function getDepartmentNameAttribute()
     {
@@ -76,6 +95,6 @@ class Emisor extends Model
     }
 
     // Para hacer estos atributos visibles en el JSON
-    protected $appends = ['department_name', 'municipality_name', 'economic_activity_name'];
+    protected $appends = ['department_name', 'municipality_name', 'economic_activity_name', 'establecimiento_name'];
 
 }
