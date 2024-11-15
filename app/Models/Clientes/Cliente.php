@@ -9,19 +9,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Cliente extends Model
 {
-    // Nombre de la tabla
+
     protected $table = 'cliente';
 
-    // Clave primaria de la tabla
     protected $primaryKey = 'id';
 
-    // Indica que el modelo tiene claves primarias autoincrementales
     public $incrementing = true;
 
-    // Tipo de clave primaria
     protected $keyType = 'int';
 
-    // Campos que se pueden asignar de forma masiva
     protected $fillable = [
         'nombres',
         'apellidos',
@@ -42,7 +38,6 @@ class Cliente extends Model
         'deleted_at',
     ];
 
-    // Opcional: Si necesitas castear algún atributo
     protected $casts = [];
 
     protected static $recordEvents = [
@@ -59,7 +54,7 @@ class Cliente extends Model
             ->logOnlyDirty();
     }
 
-    // Definir relaciones
+
     public function department()
     {
         return $this->belongsTo('App\Models\Administration\Department', 'department_id');
@@ -78,28 +73,23 @@ class Cliente extends Model
         return $this->belongsTo('App\Models\DTE\Identificacion', 'tipoIdentificacion');
     }
 
-    // Atributo para obtener el nombre del departamento
     public function getDepartmentNameAttribute()
     {
         return $this->department->name ?? null;
     }
 
-    // Atributo para obtener el nombre del municipio
     public function getMunicipalityNameAttribute()
     {
         return $this->municipality->name ?? null;
     }
 
-    // Atributo para obtener el nombre de la actividad económica
     public function getEconomicActivityNameAttribute()
     {
         return $this->economicActivity->actividad ?? null;
     }
 
-    // Para hacer estos atributos visibles en el JSON
     protected $appends = ['department_name', 'municipality_name', 'economic_activity_name'];
 
-     //Hacer referencia a la venta
      public function ventas()
      {
          return $this->hasMany('App\Models\Ventas\Venta', 'cliente_id');

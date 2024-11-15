@@ -2,10 +2,7 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use App\Models\Asistencia\ResResource;
 use App\Models\Administration\Employee;
-use App\Models\Administration\PaymentVoucherError;
 use Laravel\Passport\HasApiTokens;
 use Spatie\Activitylog\LogOptions;
 use Illuminate\Notifications\Notifiable;
@@ -26,11 +23,13 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'lastname',
+        'nit',
         'username',
         'email',
         'password',
         'change_password',
-        'status'
+        'remember_token',
+        'status',
     ];
 
     /**
@@ -70,21 +69,10 @@ class User extends Authenticatable
             ->logOnlyDirty();
     }
 
-    public function reservations()
-    {
-        return $this->belongsToMany(ResResource::class, 'res_resource_user', 'res_resource_id', 'user_id')->withPivot(['subject', 'description', 'datetime_start', 'datetime_end']);
-    }
-
-    public function employee()
+    public function admEnte()
     {
         return $this->hasOne(Employee::class, 'user_id');
     }
-
-    public function paymentVoucherErrors()
-    {
-        return $this->hasMany(PaymentVoucherError::class);
-    }
-
     public function sendPasswordResetNotification($token)
     {
         $this->notify(new MyResetPasswordNotification($token));
