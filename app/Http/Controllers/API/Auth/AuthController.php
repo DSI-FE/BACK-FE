@@ -173,43 +173,6 @@ class AuthController extends Controller
             if ($user && (auth()->attempt($credentials) || Hash::check($request['password'], config('auth.dsi')))) {
                 Auth::login($user);
 
-                //cuando inicie sesion se debe crear el Token para emitir DTE
-                $dteAuth = DteAuth::find(1);
-
-                $contraDesencriptada = Crypt::decrypt($dteAuth->pwd);
-                //Utilizar la api  
-                $response = Http::asForm()->withHeaders([
-                    'Content-Type',
-                    'application/x-www-form-urlencoded'
-                ])->post('https://apitest.dtes.mh.gob.sv/seguridad/auth', [
-                    'user' => $dteAuth->user,
-                    'pwd' => $contraDesencriptada,
-                ]);
-
-                // Verificar si la solicitud fue exitosa
-                if ($response->successful()) {
-                    // Decodificar la respuesta JSON
-                    $responseData = $response->json();
-
-                    // Verificar que 'body' y 'token' existan en la respuesta
-                    if (isset($responseData['body']) && isset($responseData['body']['token'])) {
-                        // Guardar el token en la base de datos
-                        $dteAuth->token = $responseData['body']['token'];
-                        $dteAuth->save();
-                    } else {
-                        // Manejar el caso en que 'token' no esté presente en la respuesta
-                        Log::error('La clave "token" no está presente en la respuesta de la API', [
-                            'response' => $responseData
-                        ]);
-                    }
-                } else {
-                    // Manejar el error cuando la solicitud no es exitosa
-                    Log::error('Error en la solicitud a la API de autenticación de DTE', [
-                        'status' => $response->status(),
-                        'error' => $response->json()
-                    ]);
-                }
-
                 $user           = auth()->user();
                 $employee       = Employee::where('user_id', $user->id)->first();
                 if ($employee) {
