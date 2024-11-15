@@ -15,7 +15,7 @@ Route::controller(API\Auth\AuthController::class)->group(function()
 });
 
 Route::prefix('empleados')
-->controller(API\Administracion\EmpleadoController::class)->group(function()
+->controller(API\Administration\EmployeeController::class)->group(function()
 {
     Route::get  ('/{id}/fotografia',    'getFotoEmpleado');
 });

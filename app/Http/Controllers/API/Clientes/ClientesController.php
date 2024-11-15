@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers\API\Clientes;
 
 use Exception;
@@ -19,56 +20,43 @@ use Illuminate\Database\Eloquent\Builder;
 
 class ClientesController extends Controller
 {
-    // Obtener todos los clientes
+
+
     public function index(Request $request)
     {
-        $rules = [
-            'search' => ['nullable', 'max:250'],
-            'perPage' => ['nullable', 'integer', 'min:1'],
-            'sort' => ['nullable'],
-            'sort.order' => ['nullable', Rule::in(['id', 'name', 'lastname', 'email'])],
-            'sort.key' => ['nullable', Rule::in(['asc', 'desc'])],
-        ];
+        try {
 
-        $messages = [
-            'search.max' => 'El criterio de búsqueda enviado excede la cantidad máxima permitida.',
-            'perPage.integer' => 'Solicitud de cantidad de registros por página con formato irreconocible.',
-            'perPage.min' => 'La cantidad de registros por página no puede ser menor a 1.',
-            'sort.order.in' => 'El valor de ordenamiento es inválido.',
-            'sort.key.in' => 'El valor de clave de ordenamiento es inválido.',
-        ];
+            $perPage = (int) $request->input('perPage', 10);
+            $currentPage = (int) $request->input('current_page', 1);
+            $search = $request->input('search', '');
 
-        $request->validate($rules, $messages);
+            $query = Cliente::with(['department', 'municipality', 'economicActivity', 'identificacion'])
+                ->orderBy('id', 'ASC'); 
 
-        $search = StringsHelper::normalizarTexto($request->query('search', ''));
-        $perPage = $request->query('perPage', 5);
+            if (!empty($search)) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('nombres', 'LIKE', '%' . $search . '%')
+                        ->orWhere('apellidos', 'LIKE', '%' . $search . '%')
+                        ->orWhere('correoElectronico', 'LIKE', '%' . $search . '%')
+                        ->orWhere('direccion', 'LIKE', '%' . $search . '%')
+                        ->orWhere('telefono', 'LIKE', '%' . $search . '%');
+                });
+            }
 
-        $sort = json_decode($request->input('sort'), true);
-        $orderBy = isset($sort['key']) && !empty($sort['key']) ? $sort['key'] : 'id';
-        $orderDirection = isset($sort['order']) && !empty($sort['order']) ? $sort['order'] : 'asc';
+            $result = $query->paginate($perPage, ['*'], 'page', $currentPage);
 
-        // Esto es para obtener todos los clientes junto con sus relaciones utilizando Eloquent ORM
-        $clientes = Cliente::with(['department', 'municipality', 'economicActivity', 'identificacion'])
-        ->where(function (Builder $query) use ($search) {
-            return $query->where('cliente.nombres', 'like', '%' . $search . '%')
-            ->orWhere('cliente.apellidos', 'like', '%' . $search . '%')
-            ->orWhere('cliente.correoElectronico', 'like', '%' . $search . '%')
-            ->orWhere('cliente.direccion', 'like', '%' . $search . '%')
-            ->orWhere('cliente.telefono', 'like', '%' . $search . '%');
-        })
-        ->orderBy($orderBy, $orderDirection)
-        ->paginate($perPage);
-
-        // Esto es para devolver la respuesta en formato JSON con un mensaje y los datos
-        $response = $clientes->toArray();
-        $response['search'] = $request->query('search', '');
-        $response['sort'] = [
-            'orderBy' => $orderBy,
-            'orderDirection' => $orderDirection
-        ];
-
-        return response()->json($response, 200);
+            return response()->json([
+                'data' => $result->items(),
+                'total' => $result->total(),
+                'per_page' => $result->perPage(),
+                'current_page' => $result->currentPage(),
+                'total_pages' => $result->lastPage(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Ocurrió un error al obtener los clientes: ' . $e->getMessage()], 400);
+        }
     }
+
 
     public function show($id)
     {
@@ -128,15 +116,15 @@ class ClientesController extends Controller
         $validatedData = $request->validate([
             'nombres' => 'required|string|max:100',
             'apellidos' => 'required|string|max:100',
-           // 'tipoIdentificacion' => 'required|max:50',
-           // 'numeroDocumento' => 'required|string|max:20',
+            // 'tipoIdentificacion' => 'required|max:50',
+            // 'numeroDocumento' => 'required|string|max:20',
             'direccion' => 'nullable|string|max:255',
             'nrc' => 'nullable|string|max:50',
             'telefono' => 'nullable|string|max:20',
             'correoElectronico' => 'nullable|string|max:100',
             'department_id' => 'required|exists:adm_departments,id',
             'municipality_id' => 'required|exists:adm_municipalities,id',
-           // 'economic_activity_id' => 'required|exists:actividad_economica,id',
+            // 'economic_activity_id' => 'required|exists:actividad_economica,id',
         ]);
 
         // Crear el nuevo cliente

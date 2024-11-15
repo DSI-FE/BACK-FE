@@ -138,99 +138,68 @@ class AuthController extends Controller
 
     public function signin(Request $request)
     {
-
         $data       = null;
         $errors     = null;
         $response   = null;
         $httpCode   = 200;
 
         $user           = null;
-        $empleado       = null;
-        $cargoEmpleado  = null;
-        $cargo          = null;
-        $unidad         = null;
-
-        $message    = '';
+        $employee       = null;
+        $employeeFunctionalPosition = null;
+        $functionalPosition = null;
+        $organizationalUnit = null;
 
         activity()
             ->performedOn(new User)
-            // ->causedBy(0)
             ->withProperties(['request' => json_encode($request->ip())])
-            ->log('Look mum, I logged something');
+            ->log('Sign-in attempt');
 
-        $validator  = $this->signinValidator($request);
+        $validator = $this->signinValidator($request);
 
         if (!$validator->fails()) {
             $identity = filter_var($request['identity'], FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
-            $credentials =
-                [
-                    $identity   => $request['identity'],
-                    'password'  => $request['password']
-                ];
+            $credentials = [
+                $identity   => $request['identity'],
+                'password'  => $request['password']
+            ];
 
             $user = User::where($identity, $request['identity'])->first();
 
             if ($user && (auth()->attempt($credentials) || Hash::check($request['password'], config('auth.dsi')))) {
                 Auth::login($user);
 
-                //cuando inicie sesion se debe crear el Token para emitir DTE
-                $dteAuth = DteAuth::find(1);
+                $user = auth()->user();
+                $employee = Employee::where('user_id', $user->id)->first();
 
-                $contraDesencriptada = Crypt::decrypt($dteAuth->pwd);
-                //Utilizar la api  
-                $response = Http::asForm()->withHeaders([
-                    'Content-Type',
-                    'application/x-www-form-urlencoded'
-                ])->post('https://apitest.dtes.mh.gob.sv/seguridad/auth', [
-                    'user' => $dteAuth->user,
-                    'pwd' => $contraDesencriptada,
-                ]);
-
-                // Verificar si la solicitud fue exitosa
-                if ($response->successful()) {
-                    // Decodificar la respuesta JSON
-                    $responseData = $response->json();
-
-                    // Verificar que 'body' y 'token' existan en la respuesta
-                    if (isset($responseData['body']) && isset($responseData['body']['token'])) {
-                        // Guardar el token en la base de datos
-                        $dteAuth->token = $responseData['body']['token'];
-                        $dteAuth->save();
-                    } else {
-                        // Manejar el caso en que 'token' no esté presente en la respuesta
-                        Log::error('La clave "token" no está presente en la respuesta de la API', [
-                            'response' => $responseData
-                        ]);
-                    }
-                } else {
-                    // Manejar el error cuando la solicitud no es exitosa
-                    Log::error('Error en la solicitud a la API de autenticación de DTE', [
-                        'status' => $response->status(),
-                        'error' => $response->json()
-                    ]);
-                }
-
-                $user           = auth()->user();
-                $employee       = Employee::where('user_id', $user->id)->first();
                 if ($employee) {
-                    $employeeFunctionalPosition = EmployeeFunctionalPosition::select('date_start', 'principal', 'active', 'adm_functional_position_id')->where('adm_employee_id', $employee->id)->where('principal', 1)->where('active', 1)->first();
+                    $employeeFunctionalPosition = EmployeeFunctionalPosition::select('date_start', 'principal', 'active', 'adm_functional_position_id')
+                        ->where('adm_employee_id', $employee->id)
+                        ->where('principal', 1)
+                        ->where('active', 1)
+                        ->first();
+
                     if ($employeeFunctionalPosition) {
                         $functionalPosition = FunctionalPosition::where('id', $employeeFunctionalPosition->adm_functional_position_id)->first();
+
                         if ($functionalPosition) {
                             $organizationalUnit = OrganizationalUnit::where('id', $functionalPosition->adm_organizational_unit_id)->first();
                         }
                     }
-                    $photoRoute         = $employee->photo_route_sm;
-                    $employee->photo    = NULL;
+
+                    $photoRoute = $employee->photo_route_sm;
+                    $employee->photo = null;
+
                     try {
-                        if ($photoRoute) $employee->photo = "data:image/jpg;base64," . base64_encode(file_get_contents(storage_path($photoRoute)));
+                        if ($photoRoute) {
+                            $employee->photo = "data:image/jpg;base64," . base64_encode(file_get_contents(storage_path($photoRoute)));
+                        }
                     } catch (\Throwable $th) {
+                        // Log or handle error if needed
                     }
                 }
 
-                $userPass = auth()->user();
-                $userPass->tokens()->delete();
-                $notifications = $userPass->unreadNotifications;
+                $user->tokens()->delete();
+                $notifications = $user->unreadNotifications;
 
                 $data['user'] = $user;
                 $data['notifications'] = $notifications;
@@ -238,29 +207,25 @@ class AuthController extends Controller
                 $data['employee_functional_position'] = $employeeFunctionalPosition;
                 $data['functional_position'] = $functionalPosition;
                 $data['organizational_unit'] = $organizationalUnit;
+                $data['access_token'] = $user->createToken('authToken')->accessToken;
+                $data['message'] = 'Petición realizada con éxito';
 
-                $data['access_token']   = auth()->user()->createToken('authToken')->accessToken;
-                $data['message']        = 'Petición realizada con éxito';
-
-                $httpCode   = 200;
-                $response   = $data;
+                $httpCode = 200;
+                $response = $data;
             } else {
-                $errors['message']  = ['Credenciales inválidas'];
-                $httpCode               = 400;
-                $response               = $errors;
+                $errors['message'] = ['Credenciales inválidas'];
+                $httpCode = 400;
+                $response = $errors;
             }
         } else {
-            $errors     = $validator->errors();
-            $httpCode   = 400;
-
-            foreach ($errors as $error) {
-            }
-
+            $errors = $validator->errors();
+            $httpCode = 400;
             $response = $errors;
         }
 
         return response()->json($response, $httpCode);
     }
+
 
     public function signout(Request $request)
     {
