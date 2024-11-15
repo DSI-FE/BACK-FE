@@ -8,6 +8,7 @@ use App\Models\DTE\DTE;
 use App\Models\DTE\Emisor;
 use App\Models\Ventas\DetalleVenta;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use TCPDF;
@@ -21,10 +22,10 @@ class ReportesController extends Controller
         //Obtenemos la informacion del emisor
         $emisor = Emisor::first();
         //Obtenemos la informacion de las ventas
-        $ventas = DTE::select('dte.fecha as dte_fecha', 'ventas.*')
+        $ventas = DTE::select('dte.fecha as dte_fecha', 'dte.codigo_generacion as codigo_generacion', 'ventas.*')
             ->join('ventas', 'dte.id_venta', '=', 'ventas.id')
             ->whereBetween('dte.fecha', [$fechaInicio, $fechaFin])
-            ->where('ventas.estado', 'Finalizada')
+            ->where('ventas.estado', ['Finalizada', 'Anulada'])
             ->where('ventas.tipo_documento', 1)
             ->get();
 
@@ -41,11 +42,11 @@ class ReportesController extends Controller
         //Aqui se crea el pdf y se le agrega el diseño que se necesite
         $pdf = new TCPDF();
         $pdf->AddPage('P', [216, 279]);
-        $pdf->writeHTML('<h2>' . $emisor->nombre_comercial . '</h2>, ', 0, 0, 0, 0, 'C');
+        $pdf->writeHTML('<h2>' . $emisor->nombre . '</h2>, ', 0, 0, 0, 0, 'C');
         $pdf->writeHTML('<h4>Libro de ventas a consumidor</h4>, ', 0, 0, 0, 0, 'C');
         // Crear una tabla con dos columnas
         $pdf->Cell(70, 5, 'Mes: ' . $nombreMes, 0, 0, 'L'); // Alineado a la izquierda
-        $pdf->Cell(95, 5, 'Contribuyente: ' . $emisor->nombre, 0, 1, 'R');
+        $pdf->Cell(95, 5, 'Contribuyente: ' . $emisor->nombre_comercial, 0, 1, 'L');
         $pdf->Cell(50, 5, 'Año: ' . $anio, 0, 0, 'L');
         $pdf->Cell(35, 5, 'NRC: ' . $emisor->nrc, 0, 0, 'C');
         $pdf->Cell(90, 5, 'NIT: ' . $emisor->nit, 0, 0, 'R');
@@ -57,8 +58,8 @@ class ReportesController extends Controller
         <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
             <th rowspan="2" style="border: 1px solid black; width: 27px">N°</th>
             <th rowspan="2" style="border: 1px solid black; width: 70px">Fecha</th>
-            <th rowspan="2" style="border: 1px solid black">Del No.</th>
-            <th rowspan="2" style="border: 1px solid black">Al No.</th>
+            <th rowspan="2" style="border: 1px solid black; width: 125px">No. Fact.</th>
+         
             <th colspan="3" style="border: 1px solid black; align: center; width: 193px">Ventas</th>
             <th rowspan="2" style="border: 1px solid black; font-size: 10px">Ventas por terceros</th>
             <th rowspan="2" style="border: 1px solid black; width: 73px">Total</th>
@@ -77,18 +78,30 @@ class ReportesController extends Controller
         $exentas = 0;
         // Iterar para mostrar cada venta en la tabla
         foreach ($ventas as $item) {
-            $gravadas += $item['total_pagar'];
+            // Si el estado es "anulada", establece total_pagar a 0
+            $totalPagar = $item['estado'] === 'Anulada' ? 0 : $item['total_pagar'];
+            $gravadas += $totalPagar;
             $exentas += $item['total_exentas'];
+
+            //Evaluar si la venta es anulada
+            $estado = $item['estado'];
+            $codigoGen = $item['codigo_generacion'];
+            if ($estado === 'Anulada') {
+                $codigoGeneracion = $codigoGen . ' <strong>**Anulada**</strong>';
+                $totalVenta = 0;
+            }else{
+                $totalVenta = $item['total_pagar'];
+                $codigoGeneracion = $codigoGen;
+            }
             $tabla .= '<tr style="font-size: 12px; border: 1px dotted gray; font-size: 11px;">
         <td style="border: 1px dotted gray; width: 27px; height: 15px; vertical-align: bottom;">' . $numero++ . '</td>
         <td style="border: 1px dotted gray; width: 70px">' . $item['dte_fecha'] . '</td>
-        <td style="border: 1px dotted gray">' . $item[''] . '</td>
-        <td style="border: 1px dotted gray">' . $item[''] . '</td>
-        <td style="border: 1px dotted gray; width: 75px">$ ' . $item['total_pagar'] . '</td>
+        <td style="border: 1px dotted gray; width: 125px">' . $codigoGeneracion. '</td>
+        <td style="border: 1px dotted gray; width: 75px">$ ' . number_format($totalVenta,2). '</td>
         <td style="border: 1px dotted gray; width: 68px">$ ' . $item['total_exentas'] . '</td>
         <td style="border: 1px dotted gray; width: 50px">$ 0.00</td>
         <td style="border: 1px dotted gray">$ 0.00</td>
-        <td style="border: 1px dotted gray; width: 73px">$ ' . $item['total_pagar'] . '</td>
+        <td style="border: 1px dotted gray; width: 73px">$ ' . number_format($totalVenta,2) . '</td>
         </tr>';
         }
         $tabla .= '
@@ -516,57 +529,57 @@ class ReportesController extends Controller
     }
 
     public function ticket($idDTE)
-{
-    // Obtener el DTE junto con su venta asociada
-    $dte = DTE::with('ventas', 'ambiente', 'moneda', 'tipo')->where('id', $idDTE)->first();
+    {
+        // Obtener el DTE junto con su venta asociada
+        $dte = DTE::with('ventas', 'ambiente', 'moneda', 'tipo')->where('id', $idDTE)->first();
 
-    // Verificar si el DTE existe
-    if (!$dte) {
-        return response()->json([
-            'message' => 'DTE no encontrado',
-        ], 404);
-    }
+        // Verificar si el DTE existe
+        if (!$dte) {
+            return response()->json([
+                'message' => 'DTE no encontrado',
+            ], 404);
+        }
 
-    // Obtener los detalles de la venta
-    $detalle = DetalleVenta::with('producto')
-        ->where('venta_id', $dte->id_venta)
-        ->get();
+        // Obtener los detalles de la venta
+        $detalle = DetalleVenta::with('producto')
+            ->where('venta_id', $dte->id_venta)
+            ->get();
 
-    // Obtener los datos del emisor
-    $emisor = Emisor::with(['department', 'municipality', 'economicActivity'])
-        ->where('id', 1)->first();
+        // Obtener los datos del emisor
+        $emisor = Emisor::with(['department', 'municipality', 'economicActivity'])
+            ->where('id', 1)->first();
 
-    // Configuración de TCPDF
-    $pdf = new TCPDF();
-    $pdf->AddPage('P', [216, 100]); // Formato de ticket
-  //  $pdf->setCellMargins(0, 0, 0, 0);
-   // $pdf->setPrintHeader(false);
-    //$pdf->setPrintFooter(false);
-    //$pdf->SetMargins(10, 10, 10); // Márgenes estrechos para el formato de ticket
+        // Configuración de TCPDF
+        $pdf = new TCPDF();
+        $pdf->AddPage('P', [216, 100]); // Formato de ticket
+        //  $pdf->setCellMargins(0, 0, 0, 0);
+        // $pdf->setPrintHeader(false);
+        //$pdf->setPrintFooter(false);
+        //$pdf->SetMargins(10, 10, 10); // Márgenes estrechos para el formato de ticket
 
-   // Generar contenido HTML para el ticket
-$html = '<div style="text-align: left; font-family: Consolas; font-size: 8px; line-height: 0.8;">';
-$html .= '<h5 style="text-align: center; line-height: 1.1">' . $emisor->nombre . '</h5>';
-$html .= '<p style="text-align: center;">' . $emisor->economicActivity->actividad . '</p>';
-$html .= '<p style="line-height: 0.5; text-align: center;">NRC: ' . $emisor->nrc . '.   NIT: ' . $emisor->nit . '</p>';
-$html .= '<p style="line-height: 0.5; text-align: center;">Teléfono: ' . $emisor->telefono . '.   Correo: ' . $emisor->correo . '</p>';
-$html .= '<hr>';
-$html .= '<p style="text-align: center; font-weight: bold; background-color: #000; color: #fff; margin: 0;">DETALLE DEL DTE</p>';
-$html .= '<p style="margin: 0;">Tipo: ' . $dte->tipo->nombre . '</p>';
-$html .= '<p style="margin: 0;  line-height: 0.6">Fecha de generación: ' . $dte->fecha . ' ' . $dte->hora . '</p>';
-$html .= '<p style="margin: 0;  line-height: 1">Código de generación:<br> ' . $dte->codigo_generacion . '</p>';
-$html .= '<p style="margin: 0;  line-height: 1">Número de Control: ' . $dte->numero_control . '</p>';
-$html .= '<p style="margin: 0;  line-height: 1">Sello de recepción: ' . $dte->sello_recepcion . '</p>';
-$html .= '<hr style="margin: 0;">';
-$html .= '<p style="text-align: center; font-weight: bold; background-color: #000; color: #fff; margin: 0;">DATOS DEL CLIENTE</p>';
-$html .= '<p style="margin: 0; line-height: 1">Cliente: ' . $dte->ventas->cliente->nombres . ' ' . $dte->ventas->cliente->apellidos . '</p>';
-$html .= '<p style="margin: 0;">Dirección: ' . $dte->ventas->cliente->direccion . ', '. $dte->ventas->cliente->municipality_name . ', '.$dte->ventas->cliente->department_name. '</p>';
-$html .= '<p style="margin: 0;">Teléfono: ' . $dte->ventas->cliente->telefono . '  '. '  Correo: ' . $dte->ventas->cliente->correoElectronico . '</p>';
-$html .= '<hr>';
-    $html .= '<p style="text-align: center; font-weight: bold; background-color: #000; color: #fff;">DETALLE DE LA VENTA</p>';
+        // Generar contenido HTML para el ticket
+        $html = '<div style="text-align: left; font-family: Consolas; font-size: 8px; line-height: 0.8;">';
+        $html .= '<h5 style="text-align: center; line-height: 1.1">' . $emisor->nombre . '</h5>';
+        $html .= '<p style="text-align: center;">' . $emisor->economicActivity->actividad . '</p>';
+        $html .= '<p style="line-height: 0.5; text-align: center;">NRC: ' . $emisor->nrc . '.   NIT: ' . $emisor->nit . '</p>';
+        $html .= '<p style="line-height: 0.5; text-align: center;">Teléfono: ' . $emisor->telefono . '.   Correo: ' . $emisor->correo . '</p>';
+        $html .= '<hr>';
+        $html .= '<p style="text-align: center; font-weight: bold; background-color: #000; color: #fff; margin: 0;">DETALLE DEL DTE</p>';
+        $html .= '<p style="margin: 0;">Tipo: ' . $dte->tipo->nombre . '</p>';
+        $html .= '<p style="margin: 0;  line-height: 0.6">Fecha de generación: ' . $dte->fecha . ' ' . $dte->hora . '</p>';
+        $html .= '<p style="margin: 0;  line-height: 1">Código de generación:<br> ' . $dte->codigo_generacion . '</p>';
+        $html .= '<p style="margin: 0;  line-height: 1">Número de Control: ' . $dte->numero_control . '</p>';
+        $html .= '<p style="margin: 0;  line-height: 1">Sello de recepción: ' . $dte->sello_recepcion . '</p>';
+        $html .= '<hr style="margin: 0;">';
+        $html .= '<p style="text-align: center; font-weight: bold; background-color: #000; color: #fff; margin: 0;">DATOS DEL CLIENTE</p>';
+        $html .= '<p style="margin: 0; line-height: 1">Cliente: ' . $dte->ventas->cliente->nombres . ' ' . $dte->ventas->cliente->apellidos . '</p>';
+        $html .= '<p style="margin: 0;">Dirección: ' . $dte->ventas->cliente->direccion . ', ' . $dte->ventas->cliente->municipality_name . ', ' . $dte->ventas->cliente->department_name . '</p>';
+        $html .= '<p style="margin: 0;">Teléfono: ' . $dte->ventas->cliente->telefono . '  ' . '  Correo: ' . $dte->ventas->cliente->correoElectronico . '</p>';
+        $html .= '<hr>';
+        $html .= '<p style="text-align: center; font-weight: bold; background-color: #000; color: #fff;">DETALLE DE LA VENTA</p>';
 
-    // Detalles de artículos
-    $html .= '<table width="100%" cellpadding="5" style="margin: 0; border-collapse: collapse;">
+        // Detalles de artículos
+        $html .= '<table width="100%" cellpadding="5" style="margin: 0; border-collapse: collapse;">
             <thead>
                 <tr style="font-weight: bold; background-color: #ccc;">
                     <th style="width: 20px">N°</th> 
@@ -577,34 +590,33 @@ $html .= '<hr>';
                 </tr>
             </thead>
             <tbody>';
-    $contador = 1;
-    foreach ($detalle as $item) {
-        $html .= '<tr>
+        $contador = 1;
+        foreach ($detalle as $item) {
+            $html .= '<tr>
                 <td style="width: 20px">' . $contador++ . '</td>
                 <td style="width: 25px">' . $item->cantidad . '</td>
                 <td style="width: 90px">' . $item->producto->nombre_producto . '</td>
                 <td style="width: 40px">$' . number_format($item->precio, 2) . '</td>
                 <td style="width: 50px">$' . number_format($item->total, 2) . '</td>
               </tr>';
+        }
+        $html .= '</tbody></table>';
+        $html .= '<hr>';
+        $html .= '<p style="text-align: right; font-weight: bold;">Total a pagar: $' . number_format($dte->ventas->total_pagar, 2) . '</p>';
+        $html .= '<hr><br>';
+
+        $html .= '</div>';
+
+        // Agregar el contenido HTML al PDF usando writeHTML
+        $pdf->writeHTML($html, true, false, true, false, '');
+
+        //RUTA DEL QR ESTATICO
+        $imageQR = storage_path('app/public/QRCODES/' . $dte->qr_code);
+        $y = $pdf->getY();
+        $pdf->Image($imageQR, 35, $y, 30, 30, 'PNG', '', '', false, 150, '', false, false, 1, false, false, false);
+
+        // Salida del PDF
+        return response($pdf->Output('Ticket.pdf', 'S'))
+            ->header('Content-Type', 'application/pdf');
     }
-    $html .= '</tbody></table>';
-    $html .= '<hr>';
-    $html .= '<p style="text-align: right; font-weight: bold;">Total a pagar: $' . number_format($dte->ventas->total_pagar, 2) . '</p>';
-    $html .= '<hr><br>';
-
-    $html .= '</div>';
-
-    // Agregar el contenido HTML al PDF usando writeHTML
-    $pdf->writeHTML($html, true, false, true, false, '');
-
-     //RUTA DEL QR ESTATICO
-     $imageQR = storage_path('app/public/QRCODES/' . $dte->qr_code);
-     $y = $pdf->getY();
-     $pdf->Image($imageQR, 35, $y, 30, 30, 'PNG', '', '', false, 150, '', false, false, 1, false, false, false);
-
-    // Salida del PDF
-    return response($pdf->Output('Ticket.pdf', 'S'))
-        ->header('Content-Type', 'application/pdf');
-}
-
 }

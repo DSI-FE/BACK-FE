@@ -81,13 +81,13 @@ class Cliente extends Model
     // Atributo para obtener el nombre del departamento
     public function getDepartmentNameAttribute()
     {
-        return $this->department->name;
+        return $this->department->name ?? null;
     }
 
     // Atributo para obtener el nombre del municipio
     public function getMunicipalityNameAttribute()
     {
-        return $this->municipality->name;
+        return $this->municipality->name ?? null;
     }
 
     // Atributo para obtener el nombre de la actividad económica

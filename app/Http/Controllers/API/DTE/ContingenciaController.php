@@ -69,6 +69,7 @@ class ContingenciaController extends Controller
                     'id' => $dte->id,
                     'fecha_emision' => $dte->fecha,
                     'codigo_generacion' => $dte->codigo_generacion,
+                    'sello_recepcion' => $dte->sello_recepcion,
                     'tipo_dte' => $dte->tipo->nombre,
                     'monto_total' => $dte->ventas->total_pagar,
 

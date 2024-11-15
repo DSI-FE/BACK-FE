@@ -286,164 +286,161 @@ class DTEController extends Controller
 
 
             //VERIFICAR SI ES CONTINGENCIA O NO
-            if($dte->tipo_transmision == 1){
-            
-
-            try {
-                $passwordDesencriptada = Crypt::decrypt($userFirmador->passwordPri);
-            } catch (DecryptException $e) {
-                return response()->json(['error' => 'Error al desencriptar la contraseña.'], 400);
-            }
-
-            //API PARA FIRMAR DOCUMENTO
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/json',
-            ])->post('http://127.0.0.1:8113/firmardocumento/', [
-                'nit' => $userFirmador->user,
-                'activo' => $userFirmador->activo ? 'true' : 'false',
-                'passwordPri' => $passwordDesencriptada,
-                'dteJson' => $JsonFirmar,
-            ]);
-
-            if ($response->failed()) {
-                // Maneja la respuesta fallida
-                return response()->json(['error' => 'Error al enviar la solicitud.'], 500);
-            }
-
-            //Obtener el Body
-            $response = $response->json();
-            $body = $response['body'];
-            //Guardar el BODY en campo firma
-            $dte->firma = $body;
-            $dte->save();
-            /***********************************DOCUMENTO FIRMADO HASTA AQUI ****************************** */
+            if ($dte->tipo_transmision == 1) {
 
 
-            //API PARA ENVIAR DOCUMENTO
-            if ($dte->ambiente == 1) {
-                $ambienteEnvio = '00';
-            } else {
-                $ambienteEnvio = '01';
-            }
+                try {
+                    $passwordDesencriptada = Crypt::decrypt($userFirmador->passwordPri);
+                } catch (DecryptException $e) {
+                    return response()->json(['error' => 'Error al desencriptar la contraseña.'], 400);
+                }
 
+                //API PARA FIRMAR DOCUMENTO
+                $response = Http::withHeaders([
+                    'Content-Type' => 'application/json',
+                ])->post('http://127.0.0.1:8113/firmardocumento/', [
+                    'nit' => $userFirmador->user,
+                    'activo' => $userFirmador->activo ? 'true' : 'false',
+                    'passwordPri' => $passwordDesencriptada,
+                    'dteJson' => $JsonFirmar,
+                ]);
 
-            //API PARA ENVIAR DOCUMENTO A HACIENDA
-            $EnviarFactura = Http::withHeaders([
-                'Authorization' => $userFirmador->token,
-                'Content-Type' => 'application/json',
-            ])->post('https://apitest.dtes.mh.gob.sv/fesv/recepciondte', [
-                'ambiente' => $ambienteEnvio,
-                'idEnvio' => $dte->id,
-                'version' => $dte->version,
-                'tipoDte' => $dte->tipo->codigo,
-                'documento' => $dte->firma,
-                'codigoGeneracion' => $dte->codigo_generacion,
-            ]);
+                if ($response->failed()) {
+                    // Maneja la respuesta fallida
+                    return response()->json(['error' => 'Error al enviar la solicitud.'], 500);
+                }
 
-            if ($EnviarFactura->failed()) {
-                // Maneja la respuesta fallida
-                return response()->json([
-                    'error' => 'Error al enviar la solicitud.',
-                    'respuestaHacienda' => $EnviarFactura->json(),
-                    'dte' => $dte,
-
-                ], 500);
-            }
-
-            $respuestaHacienda = $EnviarFactura->json();
-            // Verificar si la respuesta de Hacienda fue exitosa
-            $respuestaHacienda = $EnviarFactura->json();
-            // Verificar si la respuesta de Hacienda fue exitosa
-            if ($respuestaHacienda['estado'] === 'PROCESADO') {
-                $dte->sello_recepcion = $respuestaHacienda['selloRecibido'];
+                //Obtener el Body
+                $response = $response->json();
+                $body = $response['body'];
+                //Guardar el BODY en campo firma
+                $dte->firma = $body;
                 $dte->save();
-            }
-      
-            /* ***********************************DOCUMENTO ENVIADO HASTA AQUI ****************************** */
-            //Llamar el metodo para crear la factura
-            $factura = $this->ventasController->descargarFactura($id);
-            $contenidoPDF = $factura->getContent();
+                /***********************************DOCUMENTO FIRMADO HASTA AQUI ****************************** */
 
-            //llaamar la funcion para crear el json YA CON SELLO
-            if ($venta->tipo_documento == 3) {
-                $jsonData = $this->JsonSujeto($id);
+
+                //API PARA ENVIAR DOCUMENTO
+                if ($dte->ambiente == 1) {
+                    $ambienteEnvio = '00';
+                } else {
+                    $ambienteEnvio = '01';
+                }
+
+
+                //API PARA ENVIAR DOCUMENTO A HACIENDA
+                $EnviarFactura = Http::withHeaders([
+                    'Authorization' => $userFirmador->token,
+                    'Content-Type' => 'application/json',
+                ])->post('https://apitest.dtes.mh.gob.sv/fesv/recepciondte', [
+                    'ambiente' => $ambienteEnvio,
+                    'idEnvio' => $dte->id,
+                    'version' => $dte->version,
+                    'tipoDte' => $dte->tipo->codigo,
+                    'documento' => $dte->firma,
+                    'codigoGeneracion' => $dte->codigo_generacion,
+                ]);
+
+                if ($EnviarFactura->failed()) {
+                    // Maneja la respuesta fallida
+                    return response()->json([
+                        'error' => 'Error al enviar la solicitud.',
+                        'respuestaHacienda' => $EnviarFactura->json(),
+                        'dte' => $dte,
+
+                    ], 500);
+                }
+
+                $respuestaHacienda = $EnviarFactura->json();
+                // Verificar si la respuesta de Hacienda fue exitosa
+                $respuestaHacienda = $EnviarFactura->json();
+                // Verificar si la respuesta de Hacienda fue exitosa
+                if ($respuestaHacienda['estado'] === 'PROCESADO') {
+                    $dte->sello_recepcion = $respuestaHacienda['selloRecibido'];
+                    $dte->save();
+                }
+
+                /* ***********************************DOCUMENTO ENVIADO HASTA AQUI ****************************** */
+                //Llamar el metodo para crear la factura
+                $factura = $this->ventasController->descargarFactura($id);
+                $contenidoPDF = $factura->getContent();
+
+                //llaamar la funcion para crear el json YA CON SELLO
+                if ($venta->tipo_documento == 3) {
+                    $jsonData = $this->JsonSujeto($id);
+                } else {
+                    $jsonData = $this->obtenerJson($id);
+                }
+                $json = $jsonData->getData();
+                $JsonFirmar = !empty($json) ? $json[0] : null;
+
+
+
+                // Obtener el cliente
+                $cliente = Cliente::where('id', $dte->ventas->cliente_id)->first();
+
+                // Verificar el formato del correo electrónico
+                $correoElectronico = $cliente->correoElectronico;
+                $correoValido = filter_var($correoElectronico, FILTER_VALIDATE_EMAIL) !== false;
+
+                if ($correoValido) {
+                    // Envio del correo solo si el formato es correcto
+                    Mail::to($correoElectronico)->send(
+                        new MiCorreo(
+                            $emisor->nombre_comercial,
+                            $cliente->nombres . ' ' . $cliente->apellidos,
+                            $dte->fecha,
+                            $dte->codigo_generacion,
+                            $dte->numero_control,
+                            $contenidoPDF,
+                            $dte,
+                            json_encode($JsonFirmar)
+                        )
+                    );
+                } else {
+                    // Si el correo es inválido, registrar un aviso sin interrumpir la transacción
+                    Log::warning('El correo electrónico es incorrecto: ' . $correoElectronico);
+                }
             } else {
-                $jsonData = $this->obtenerJson($id);
+                //SI ES CONTINGENCIA SE ENVIA EL CORREO PERO NO SE TRABSMITE LA FACTURA
+
+                $factura = $this->ventasController->descargarFactura($id);
+                $contenidoPDF = $factura->getContent();
+
+                // Obtener el cliente
+                $cliente = Cliente::where('id', $dte->ventas->cliente_id)->first();
+
+                // Verificar el formato del correo electrónico
+                $correoElectronico = $cliente->correoElectronico;
+                $correoValido = filter_var($correoElectronico, FILTER_VALIDATE_EMAIL) !== false;
+
+                if ($correoValido) {
+                    // Envio del correo solo si el formato es correcto
+                    Mail::to($correoElectronico)->send(
+                        new MiCorreo(
+                            $emisor->nombre_comercial,
+                            $cliente->nombres . ' ' . $cliente->apellidos,
+                            $dte->fecha,
+                            $dte->codigo_generacion,
+                            $dte->numero_control,
+                            $contenidoPDF,
+                            $dte,
+                            json_encode($JsonFirmar)
+                        )
+                    );
+                } else {
+                    // Si el correo es inválido, registrar un aviso sin interrumpir la transacción
+                    Log::warning('El correo electrónico es incorrecto: ' . $correoElectronico);
+                }
             }
-            $json = $jsonData->getData();
-            $JsonFirmar = !empty($json) ? $json[0] : null;
 
-          
+            DB::commit();
 
-            // Obtener el cliente
-            $cliente = Cliente::where('id', $dte->ventas->cliente_id)->first();
-
-            // Verificar el formato del correo electrónico
-            $correoElectronico = $cliente->correoElectronico;
-            $correoValido = filter_var($correoElectronico, FILTER_VALIDATE_EMAIL) !== false;
-
-            if ($correoValido) {
-                // Envio del correo solo si el formato es correcto
-                Mail::to($correoElectronico)->send(
-                    new MiCorreo(
-                        $cliente->nombres . ' ' . $cliente->apellidos,
-                        $dte->fecha,
-                        $dte->codigo_generacion,
-                        $dte->numero_control,
-                        $contenidoPDF,
-                        $dte,
-                        json_encode($JsonFirmar)
-                    )
-                );
-            } else {
-                // Si el correo es inválido, registrar un aviso sin interrumpir la transacción
-                Log::warning('El correo electrónico es incorrecto: ' . $correoElectronico);
-            }
-
-        } else {
-            //SI ES CONTINGENCIA SE ENVIA EL CORREO PERO NO SE TRABSMITE LA FACTURA
-
-            $factura = $this->ventasController->descargarFactura($id);
-            $contenidoPDF = $factura->getContent();
-
-             // Obtener el cliente
-             $cliente = Cliente::where('id', $dte->ventas->cliente_id)->first();
-
-             // Verificar el formato del correo electrónico
-             $correoElectronico = $cliente->correoElectronico;
-             $correoValido = filter_var($correoElectronico, FILTER_VALIDATE_EMAIL) !== false;
- 
-             if ($correoValido) {
-                 // Envio del correo solo si el formato es correcto
-                 Mail::to($correoElectronico)->send(
-                     new MiCorreo(
-                         $cliente->nombres . ' ' . $cliente->apellidos,
-                         $dte->fecha,
-                         $dte->codigo_generacion,
-                         $dte->numero_control,
-                         $contenidoPDF,
-                         $dte,
-                         json_encode($JsonFirmar)
-                     )
-                 );
-             } else {
-                 // Si el correo es inválido, registrar un aviso sin interrumpir la transacción
-                 Log::warning('El correo electrónico es incorrecto: ' . $correoElectronico);
-             }
-        
-        }
-
-         DB::commit();
-
-         return response()->json([
-            'message' => 'DTE creado exitosamente',
-            'data' => $dte,
-            'detalle' => $detalle,
-           // 'respuestaHacienda' => $EnviarFactura->json(),
-        ], 201);
-
-         
-
+            return response()->json([
+                'message' => 'DTE creado exitosamente',
+                'data' => $dte,
+                'detalle' => $detalle,
+                // 'respuestaHacienda' => $EnviarFactura->json(),
+            ], 201);
         } catch (\Exception $e) {
             DB::rollback();
             return response()->json([
@@ -559,7 +556,7 @@ class DTEController extends Controller
             $anulacion->firma = $body;
             $anulacion->codigo_generacion = $JsonFirmar->identificacion->codigoGeneracion;
             $anulacion->save();
-            
+
 
             $response = Http::withHeaders([
                 'Authorization' => $userFirmador->token,
@@ -567,7 +564,7 @@ class DTEController extends Controller
             ])->post('https://apitest.dtes.mh.gob.sv/fesv/anulardte', [
                 'ambiente' => $ambienteEnvio,
                 'idEnvio' => $dte->id,
-                'version' => 2,//$dte->version,
+                'version' => 2, //$dte->version,
                 'tipoDte' => $dte->tipo->codigo,
                 'documento' => $body,
             ]);
@@ -606,18 +603,18 @@ class DTEController extends Controller
 
     public function TransmitirContingencia($idcont)
     {
-     
+
         DB::beginTransaction();
         try {
             // Buscar la contingencia en la base de datos
-            $contingencia = Contingencia::find($idcont);
+            $contingencia = Contingencia::where('id', $idcont)->first();
             // Verificar si la contingencia existe
             if (!$contingencia) {
                 return response()->json([
                     'message' => 'Contingencia no encontrada',
                 ], 404);
             }
-    
+
 
             //LLamar la funcion del json para contingencia
             $jsonData = $this->Contingencia($idcont);
@@ -626,7 +623,7 @@ class DTEController extends Controller
 
 
             $userFirmador = DteAuth::get()->first();
-        
+
 
             try {
                 $passwordDesencriptada = Crypt::decrypt($userFirmador->passwordPri);
@@ -664,11 +661,10 @@ class DTEController extends Controller
 
 
             // Verificar si la respuesta de la API es válida y contiene 'estado'
-           $respuestaMH = $response->json() ?? null;
+            $respuestaMH = $response->json() ?? null;
             if (isset($respuestaMH['estado']) && $respuestaMH['estado'] === 'RECIBIDO') {
                 $contingencia->sello_recepcion = $respuestaMH['selloRecibido'];
                 $contingencia->save();
-                
             } else {
                 return response()->json([
                     'error' => 'No se pudo enviar la contingencia.',
@@ -676,7 +672,7 @@ class DTEController extends Controller
                     'Json' => $JsonFirmar,
                     'firmado' => $firma,
                 ], 500);
-           }
+            }
 
 
             $contingencia->update([
@@ -686,21 +682,16 @@ class DTEController extends Controller
 
             DB::commit();
 
-            /*   HASTA AQUI YA SE ENVIO EL EVENTO DE CONTINGENA
-             
-            AHORA HAY QUE ENVIAR ESE LOTE DE DTES QUE ESTAN EN CONTINGENCIA
-            */
-            $dtes = DTE::where('contingencia_id', $idcont)->get();
+            //   HASTA AQUI YA SE ENVIO EL EVENTO DE CONTINGENA
 
 
             // Devolver la respuesta en formato JSON
             return response()->json([
                 'message' => 'los DTEs fueron emitidos correctamente',
-                'respuestaHacienda' => $response->json(),
-                'data' => $json,
+                //'respuestaHacienda' => $response->json(),
+                'firma' => $body,
+                'jsson' => $JsonFirmar,
             ], 200);
-
-
         } catch (\Exception $e) {
 
             return response()->json([
@@ -713,10 +704,113 @@ class DTEController extends Controller
     }
 
 
+    public function transmitirUnoAUno($idDte){
+
+        DB::beginTransaction();
+        try {
+            // Buscar el DTE en la base de datos
+            $dte = DTE::where('id', $idDte)->first();
+            // Verificar si el DTE existe
+            if (!$dte) {
+                return response()->json([
+                    'message' => 'DTE no encontrado',
+                ], 404);
+            }
+
+            //LLamar la funcion del json para contingencia
+            //si el dte es 3 se usa otro json
+            if ($dte->tipo_documento == 3) {
+                $jsonData = $this->JsonSujeto($dte->id_venta);
+            } else {
+                $jsonData = $this->obtenerJson($dte->id_venta);
+            }
+           // $jsonData = $this->obtenerJson($dte->id_venta);
+            $json = $jsonData->getData();
+            $JsonFirmar = !empty($json) ? $json[0] : null;
+
+            $userFirmador = DteAuth::get()->first();
+
+            try {
+                $passwordDesencriptada = Crypt::decrypt($userFirmador->passwordPri);
+            } catch (DecryptException $e) {
+                return response()->json(['error' => 'Error al desencriptar la contraseña.'], 400);
+            }
+            if ($dte->ambiente == 1) {
+                $ambienteEnvio = '00';
+            } else {
+                $ambienteEnvio = '01';
+            }
+
+            //API PARA FIRMAR DOCUMENTO
+            $firma = Http::withHeaders([
+                'Content-Type' => 'application/json',
+            ])->post('http://127.0.0.1:8113/firmardocumento/', [
+                'nit' => $userFirmador->user,
+                'activo' => $userFirmador->activo ? 'true' : 'false',
+                'passwordPri' => $passwordDesencriptada,
+                'dteJson' => $JsonFirmar,
+            ]);
+
+            //Obtener el Body
+            $responseFirma = $firma->json();
+            $body = $responseFirma['body'];
+            //Guardar el BODY en campo firma
+            $dte->firma = $body;
+            $dte->save();
+
+            // ENVIAR EL DTE UNO A UNO
+            $response = Http::withHeaders([
+                'Authorization' => $userFirmador->token,
+                'Content-Type' => 'application/json',
+            ])->post('https://apitest.dtes.mh.gob.sv/fesv/recepciondte', [
+                'ambiente' => $ambienteEnvio,
+                'idEnvio' => $dte->id,
+                'version' => $dte->version,
+                'tipoDte' => $dte->tipo->codigo,
+                'documento' => $dte->firma,
+                'codigoGeneracion' => $dte->codigo_generacion,
+            ]);
+
+            if ($response->failed()) {
+                return response()->json([
+                    'error' => 'Error al enviar la solicitud.',
+                    'respuestaHacienda' => $response->json(),
+                    'Json' => $JsonFirmar,
+                ], 500);
+            }
+
+            $respuestaHacienda = $response->json();
+            if ($respuestaHacienda['estado'] === 'PROCESADO') {
+                $dte->sello_recepcion = $respuestaHacienda['selloRecibido'];
+                $dte->save();
+            }
+
+            DB::commit();
+
+            //   HASTA AQUI YA SE ENVIO EL EVENTO DE CONTINGENA
+
+            // Devolver la respuesta en formato JSON
+            return response()->json([
+                'message' => 'El DTE fue emitidos correctamente',
+                //'respuestaHacienda' => $response->json(),
+                'firma' => $body,
+                'jsson' => $JsonFirmar,
+                'respuestaHacienda' => $respuestaHacienda,
+            ], 200);
+        } catch (\Exception $e) {
+                
+                return response()->json([
+                    'error' => 'Error al enviar la solicitud.',
+                    'e' => $e->getMessage(),
+                    //'respuestaHacienda' => $respuestaMH,
+                    //'Json' => $JsonFirmar,
+                ], 500);
+            }
+
+    }
 
 
-
-    /******************************ESTRUCTURA DE JSON DE QUI PARA ABAJO*******************************************/
+    /******************************ESTRUCTURA DE JSON DE AQUI PARA ABAJO*******************************************/
 
 
 
@@ -757,6 +851,12 @@ class DTEController extends Controller
         $totalEnLetras = strtoupper($resultado->toWords($parteEntera)) . ' ' . sprintf('%02d', $parteDecimal) . '/100 USD';
 
 
+        $direccionCliente = ($cliente->department && $cliente->municipality) ? [
+            'departamento' => isset($cliente->department) ? $cliente->department->codigo : null,
+            'municipio' => isset($cliente->municipality) ? $cliente->municipality->codigo : null,
+            'complemento' => $cliente->direccion ?? '000'
+        ] : null;
+
 
 
         //receptor si es factura lleva esta estructura
@@ -768,15 +868,10 @@ class DTEController extends Controller
                 'nombre' => trim("{$cliente->nombres} {$cliente->apellidos}"),
                 'codActividad' => isset($cliente->economicActivity) ? (string) $cliente->economicActivity->codigo : null,
                 'descActividad' => isset($cliente->economicActivity) ? (string) $cliente->economicActivity->actividad : null,
-                'direccion' => [
-                    'departamento' => isset($cliente->department) ? $cliente->department->codigo : null,
-                    'municipio' => isset($cliente->municipality) ? $cliente->municipality->codigo : null,
-                    'complemento' => $cliente->direccion ?? '000'
-                ],
+                'direccion' => $direccionCliente,
                 'telefono' => $cliente->telefono ?? '00000000',
                 'correo' => $cliente->correoElectronico ?? null
             ];
-            
         }
         if ($dte->tipo_documento == 2) {
             //si es credito fiscal lleva esta estructura
@@ -868,8 +963,8 @@ class DTEController extends Controller
                     [
                         'codigo' => '20',
                         'descripcion' => 'Impuesto al Valor Agregado 13%',
-                        'valor' => (float) number_format(($ventas->total_pagar / 1.13) * 0.13, 2), // IVA sobre el total del item
-                    ],
+                        'valor' =>  round(($ventas->total_pagar / 1.13) * 0.13, 2), // IVA sobre el total del item
+                    ],                    
                 ];
             }
 
@@ -892,30 +987,31 @@ class DTEController extends Controller
 
 
             if ($det->producto->producto->combustible) {
-                $precioNetoUni  = $dte->tipo_documento == 2 ? number_format(($det->precio - 0.3) / 1.13, 4) : number_format($det->precio - 0.30, 4);
-                $precioNetoTot  = $dte->tipo_documento == 2 ? number_format(($det->total - ($det->cantidad * 0.3)) / 1.13, 2) : number_format($det->total - $det->cantidad * 0.3, 4);
-                $totalGravadas = $dte->tipo_documento == 2 ? number_format(($ventas->total_pagar - $totalCantidad * 0.3) / 1.13, 2) : number_format(($ventas->total_pagar - $totalCantidad * 0.30), 4);
+                $precioNetoUni = $dte->tipo_documento == 2 ? round(($det->precio - 0.3) / 1.13, 4) : round($det->precio - 0.30, 4);
+                $precioNetoTot = $dte->tipo_documento == 2 ? round(($det->total - ($det->cantidad * 0.3)) / 1.13, 2) : round($det->total - $det->cantidad * 0.3, 4);
+                $totalGravadas = $dte->tipo_documento == 2 ? round(($ventas->total_pagar - $totalCantidad * 0.3) / 1.13, 2) : round($ventas->total_pagar - $totalCantidad * 0.30, 4);
             } else {
-                $precioNetoUni = $dte->tipo_documento == 2 ? number_format($det->precio / 1.13, 2) : number_format($det->precio, 2);
-                $precioNetoTot = $dte->tipo_documento == 2 ? number_format($det->total / 1.13, 2) : number_format($det->total, 2);
-                $totalGravadas = $dte->tipo_documento == 2 ? number_format($ventas->total_pagar / 1.13, 2) : number_format($ventas->total_pagar, 2);
+                $precioNetoUni = $dte->tipo_documento == 2 ? round($det->precio / 1.13, 3) : round($det->precio, 2);
+                $precioNetoTot = $dte->tipo_documento == 2 ? round($det->total / 1.13, 3) : round($det->total, 2);
+                $totalGravadas = $dte->tipo_documento == 2 ? round($ventas->total_pagar / 1.13, 2) : round($ventas->total_pagar, 2);
             }
+            
 
             // Crear el cuerpo del documento para el producto
             $cuerpoDocumento[] = [
                 'numItem' => $conta++,
-                'tipoItem' => $det->producto->producto->tipo_producto_id,
+                'tipoItem' =>  $det->producto->producto->tipo_producto_id,
                 'numeroDocumento' => null,
                 'cantidad' => $det->cantidad,
                 'codigo' => (string) $det->producto->producto_id,
                 'codTributo' => null,
                 'uniMedida' => $det->producto->unidad->codigo,
                 'descripcion' => $det->producto->nombreProducto,
-                'precioUni' => (float) $precioNetoUni, // $dte->tipo_documento == 2 ? number_format($det->precio / 1.13, 4) : number_format($det->precio, 4),
+                'precioUni' =>  $precioNetoUni, // $dte->tipo_documento == 2 ? number_format($det->precio / 1.13, 4) : number_format($det->precio, 4),
                 'montoDescu' => 0,
                 'ventaNoSuj' => 0,
                 'ventaExenta' => 0,
-                'ventaGravada' => (float) str_replace(',', '', $precioNetoTot), //$dte->tipo_documento == 2 ? number_format($det->total / 1.13, 4) : number_format($det->total, 4),
+                'ventaGravada' => round($precioNetoTot,4), //$dte->tipo_documento == 2 ? number_format($det->total / 1.13, 4) : number_format($det->total, 4),
                 'tributos' => $tributos,
                 'psv' => 0,
                 'noGravado' => 0,
@@ -923,11 +1019,15 @@ class DTEController extends Controller
 
             // Agregar ivaItem si el tipo de documento es 1
             if ($dte->tipo_documento == 1) {
-                $cuerpoDocumento[count($cuerpoDocumento) - 1]['ivaItem'] = (float) number_format(($det->total / 1.13) * 0.13, 4);
+                if ($det->producto->producto->combustible) {
+                    $ivaItem = (($det->total - $det->cantidad * 0.3) / 1.13) * 0.13;
+                } else {
+                    $ivaItem = ($det->total / 1.13) * 0.13;
+                }
+                $cuerpoDocumento[count($cuerpoDocumento) - 1]['ivaItem'] = round($ivaItem, 2);
             }
-            if ($dte->tipo_documento == 1 && $det->producto->producto->combustible) {
-                $cuerpoDocumento[count($cuerpoDocumento) - 1]['ivaItem'] = (float) number_format((($det->total - $det->cantidad * 0.3) / 1.13) * 0.13, 2);
-            }
+            
+            
         }
         $resumen = [
             'totalNoSuj' => 0,
@@ -957,10 +1057,10 @@ class DTEController extends Controller
         // Calcular y agregar totalIva después de totalLetras si el tipo de documento no es 2
         if ($dte->tipo_documento == 1) {
             $resumen['totalIva'] = $det->producto->producto->combustible
-                ? (float) number_format((($ventas->total_pagar - $totalCantidad * 0.30) / 1.13) * 0.13, 2)
-                : (float) number_format(($ventas->total_pagar / 1.13) * 0.13, 2);
+                ? round((($ventas->total_pagar - $totalCantidad * 0.30) / 1.13) * 0.13, 2)
+                : round(($ventas->total_pagar / 1.13) * 0.13, 2);
         }
-
+        
         // Continuar agregando el resto de los elementos
         $resumen += [
             'saldoFavor' => 0,
@@ -976,6 +1076,8 @@ class DTEController extends Controller
             ],
             'numPagoElectronico' => ''
         ];
+
+
 
 
         // Estructura completa del JSON
@@ -1086,6 +1188,12 @@ class DTEController extends Controller
             ];
         }
 
+        $direccionCliente = ($cliente->department && $cliente->municipality) ? [
+            'departamento' => isset($cliente->department) ? $cliente->department->codigo : null,
+            'municipio' => isset($cliente->municipality) ? $cliente->municipality->codigo : null,
+            'complemento' => $cliente->direccion ?? '000'
+        ] : null;
+
         $jsonData = [
             'identificacion' => [
                 'version' => $version,
@@ -1105,10 +1213,10 @@ class DTEController extends Controller
                 'nit' => str_replace('-', '', $emisor->nit),
                 'nrc' => str_replace('-', '', $emisor->nrc),
                 'nombre' => $emisor->nombre,
-                'codActividad' => (string) $emisor->economicActivity->codigo,
-                'descActividad' => $emisor->economicActivity->actividad,
+                'codActividad' => (string) $emisor->economicActivity->codigo ?? null,
+                'descActividad' => $emisor->economicActivity->actividad ?? null,
                 'direccion' => [
-                    'departamento' => $emisor->department->codigo,
+                    'departamento' => $emisor->department->codigo ,
                     'municipio' => $emisor->municipality->codigo,
                     'complemento' => $emisor->direccion
                 ],
@@ -1120,16 +1228,16 @@ class DTEController extends Controller
                 'codPuntoVenta' => null,
             ],
             'sujetoExcluido' => [
-                'tipoDocumento' => (string) $cliente->identificacion->codigo ?? null,
+                'tipoDocumento' => isset($cliente->identificacion) ? (string) $cliente->identificacion->codigo : null,
                 'numDocumento' => str_replace('-', '', $cliente->numeroDocumento),
                 'nombre' => $cliente->nombres . ' ' . $cliente->apellidos,
-                'codActividad' => (string) $cliente->economicActivity->codigo ?? null,
-                'descActividad' =>  $cliente->economicActivity->actividad ?? null,
-                'direccion' => [
+                'codActividad' => isset($cliente->economicActivity) ? (string) $cliente->economicActivity->codigo : null,
+                'descActividad' => isset($cliente->economicActivity) ? $cliente->economicActivity->actividad : null,
+                'direccion' => $direccionCliente, /*[
                     'departamento' => $cliente->department->codigo,
                     'municipio' => $cliente->municipality->codigo,
                     'complemento' => $cliente->direccion
-                ],
+                ], */
                 'telefono' => $cliente->telefono ?? null,
                 'correo' => $cliente->correoElectronico
             ],
@@ -1232,26 +1340,29 @@ class DTEController extends Controller
         return response()->json([$jsonData]);
     }
 
-    //Json para contingencia
+
+    //Json para evento de contingencia
     public function Contingencia($idConti)
     {
-
-        //contenido que llevara el json
+        // Obtener el Emisor con los datos relacionados
         $emisor = Emisor::with(['establecimiento', 'department', 'municipality', 'economicActivity'])
             ->where('id', 1)
             ->first();
-        $dte = DTE::with('tipo', 'ambiente', 'ventas', 'anulada')->where('contingencia_id', $idConti)->get();
 
+        // Obtener la colección de registros DTE con los datos relacionados
+        $dte = DTE::with('tipo', 'ambiente', 'ventas', 'anulada')
+            ->where('contingencia_id', $idConti)
+            ->get();
+
+        // Obtener el primer registro DTE de la colección
         $primerDTE = $dte->first();
-        //Ambiente destino
-        $Codambiente = 0;
-        if ($primerDTE->ambiente == 1) {
-            $Codambiente = '00';
-        } else {
-            $Codambiente = '01';
-        }
 
+        // Determinar el ambiente de destino
+        $Codambiente = $primerDTE->ambiente == 1 ? '00' : '01';
+
+        // Preparar los detalles para cada DTE
         $contador = 1;
+        $detalleDTE = [];
         foreach ($dte as $det) {
             $detalleDTE[] = [
                 'noItem' => $contador++,
@@ -1260,27 +1371,26 @@ class DTEController extends Controller
             ];
         }
 
-
-
+        // Construir los datos JSON
         $jsonData = [
             'identificacion' => [
-                'version' => $primerDTE->version,
+                'version' => 3,
                 'ambiente' => $Codambiente,
-                'codigoGeneracion' => strtoupper(Str::uuid()->toString()), //$dte->contingencia->codigo_generacion,
+                'codigoGeneracion' => strtoupper(Str::uuid()->toString()),
                 'fTransmision' => now()->format('Y-m-d'),
-                'hTransmision' => now()->format('H:i:s')
+                'hTransmision' => now()->format('H:i:s'),
             ],
             'emisor' => [
                 'nit' => str_replace('-', '', $emisor->nit),
                 'nombre' => $emisor->nombre,
-                'nombreResponsable' => 'Iris Alonzo',// $dte->contingencia->responsable->nombre,
-                'tipoDocResponsable' => '13',//(string) $dte->contingencia->responsable->tipoDocumento->codigo,
-                'numeroDocResponsable' => '058246503',// str_replace('-', '', $dte->contingencia->responsable->numero_documento),
+                'nombreResponsable' => $primerDTE->contingencia->responsable->nombre,
+                'tipoDocResponsable' => (string) $primerDTE->contingencia->responsable->tipoDocumento->codigo,
+                'numeroDocResponsable' => str_replace('-', '', $primerDTE->contingencia->responsable->numero_documento),
                 'tipoEstablecimiento' => $emisor->establecimiento->codigo,
-                'codEstableMH' => null,
-                'codPuntoVenta' => null,
+                'codEstableMH' => 'M001',
+                'codPuntoVenta' => 'P001',
                 'telefono' => $emisor->telefono,
-                'correo' => strtoupper($emisor->correo),
+                'correo' => $emisor->correo,
             ],
             'detalleDTE' => $detalleDTE,
             'motivo' => [
@@ -1289,8 +1399,8 @@ class DTEController extends Controller
                 'hInicio' => $primerDTE->contingencia->horaInicio ?? null,
                 'hFin' => $primerDTE->contingencia->horaFin ?? null,
                 'tipoContingencia' => $primerDTE->contingencia->tipoContingencia->id ?? null,
-                'motivoContingencia' => $primerDTE->contingencia->motivo_contingencia ?? null,
-            ]
+                'motivoContingencia' => 'No disponibilidad de sistema del MH',//$primerDTE->contingencia->motivo_contingencia ?? null,
+            ],
         ];
 
         return response()->json([$jsonData]);

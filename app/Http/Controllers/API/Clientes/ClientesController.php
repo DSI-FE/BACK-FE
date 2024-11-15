@@ -134,8 +134,8 @@ class ClientesController extends Controller
             'nrc' => 'nullable|string|max:50',
             'telefono' => 'nullable|string|max:20',
             'correoElectronico' => 'nullable|string|max:100',
-            'department_id' => 'required|exists:adm_departments,id',
-            'municipality_id' => 'required|exists:adm_municipalities,id',
+           // 'department_id' => 'required|exists:adm_departments,id',
+            //'municipality_id' => 'required|exists:adm_municipalities,id',
            // 'economic_activity_id' => 'required|exists:actividad_economica,id',
         ]);
 

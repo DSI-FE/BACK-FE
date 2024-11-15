@@ -428,7 +428,7 @@ class VentasController extends Controller
         $pdf->Cell(0, 5, 'version. ' . $dte->version, 0, 1, 'R');
         $pdf->Cell(0, 5, $dte->tipo->nombre, 0, 1, 'C');
 
-    
+
         // Establecer la fuente en negrita para los títulos
         $pdf->SetFont('Times', 'B', 10);
 
@@ -467,12 +467,12 @@ class VentasController extends Controller
         // Texto para número de control y tipo de transmisión en la misma línea
         $pdf->Cell(60, 5, $dte->numero_control, 0, 0, 'L');
         $pdf->Cell(70, 5, '', 0, 0, 'C'); // Celda vacía en el centro   
-        if($dte->tipo_transmision == '1'){
+        if ($dte->tipo_transmision == '1') {
             $pdf->Cell(26, 5, $dte->tipoTransmision->nombre, 0, 1, 'R');
-        }else{
+        } else {
             $pdf->Cell(38, 5, $dte->tipoTransmision->nombre, 0, 1, 'R');
         }
-       // $pdf->Cell(26, 5, $dte->tipoTransmision->nombre, 0, 1, 'R');
+        // $pdf->Cell(26, 5, $dte->tipoTransmision->nombre, 0, 1, 'R');
         $pdf->Ln(1); // Añade espacio vertical entre líneas
 
         // Establecer la fuente en negrita para los títulos
@@ -708,11 +708,11 @@ class VentasController extends Controller
                  <td  style="width: 50px;">' . $item['cantidad'] . '</td>
                  <td  style="width: 195px; text-align: left">' . $item['producto']['nombre_producto'] . '</td>
                  <td  style="width: 42px;">' . $item['producto']['unidad_medida'] . '</td>
-                 <td  style="width: 42px;">$' . number_format(($item['precio'] - 0.30) / 1.13, 4) . '</td>
+                 <td  style="width: 42px;">$' . number_format(($item['precio'] - 0.30) / 1.13, 2) . '</td>
                  <td  style="width: 45px;">$0.00</td>
                  <td  style="width: 42px;">$0.00</td>
                  <td  style="width: 45px;">$0.00</td>
-                 <td  style="width: 50px;">$' . number_format(($item['total'] - $item['cantidad'] * 0.30) / 1.13, 3) . '</td>
+                 <td  style="width: 50px;">$' . number_format(($item['total'] - $item['cantidad'] * 0.30) / 1.13, 2) . '</td>
             </tr>';
             }
             if ($dte->tipo_documento == 1 && $item['producto']['producto']['combustible']) {
@@ -738,7 +738,7 @@ class VentasController extends Controller
              <td  style="width: 50px;">' . $item['cantidad'] . '</td>
              <td  style="width: 195px; text-align: left">' . $item['producto']['nombre_producto'] . '</td>
              <td  style="width: 42px;">' . $item['producto']['unidad_medida'] . '</td>
-             <td  style="width: 42px;">$' . number_format($item['precio'] / 1.13, 4) . '</td>
+             <td  style="width: 42px;">$' . number_format($item['precio'] / 1.13, 2) . '</td>
              <td  style="width: 45px;">$0.00</td>
              <td  style="width: 42px;">$0.00</td>
              <td  style="width: 42px;">$0.00</td>
@@ -784,6 +784,22 @@ class VentasController extends Controller
         }
 
         //PARTE DEL RESUMEN DE VENTAS
+        // Condiciones
+        switch ($dte->ventas->condicion) {
+            case 1:
+                $nombreCondicion = 'Contado';
+                break;
+            case 2:
+                $nombreCondicion = 'A Crédito';
+                break;
+            case 3:
+                $nombreCondicion = 'Otro';
+                break;
+            default:
+                $nombreCondicion = '';
+                break;
+        }
+
         // Colocar la suma de ventas después del foreach
         if ($dte->tipo_documento == 2 && $item['producto']['producto']['combustible']) {
             $tablaContenido .= '
@@ -887,10 +903,10 @@ class VentasController extends Controller
         if ($dte->tipo_documento == 1 && !$item['producto']['producto']['combustible']) {
             $subtotal = number_format($dte->ventas->total_pagar, 2);
             $tablaContenido .= '
-    <tr>
-        <td colspan="8" style="text-align: right;">Subtotal:</td>
-        <td colspan="1">$ ' . $subtotal . '</td>
-    </tr>';
+            <tr>
+                <td colspan="8" style="text-align: right;">Subtotal:</td>
+                <td colspan="1">$ ' . $subtotal . '</td>
+            </tr>';
         }
 
 
@@ -914,11 +930,11 @@ class VentasController extends Controller
         </tr>';
         }
 
-        if($dte->tipo_documento == 3){
-        $tablaContenido .= '
+        if ($dte->tipo_documento == 3) {
+            $tablaContenido .= '
         <tr>
             <td colspan="8" style="text-align: right;">Retención de renta:</td>
-            <td colspan="1">$ '.$dte->ventas->retencion .'</td>
+            <td colspan="1">$ ' . $dte->ventas->retencion . '</td>
         </tr>';
         }
 
@@ -929,19 +945,33 @@ class VentasController extends Controller
             <td colspan="1">$ 0.00</td>
         </tr><br>';
         }
-        //Total en letras
+        //Total a pagar
+
         $tablaContenido .= '
         <tr>
             <td colspan="8" style="text-align: right;">Total a pagar:</td>
             <td colspan="1"><strong>$ ' . number_format($dte->ventas->total_pagar, 2) . '</strong></td>
         </tr><hr>
+        
        </table>';
+
+        //Total en letras
+        $tablaContenido .= '
+         <table cellpadding="5" cellspacing="0" style="font-size: 10px; font-family: \'Times New Roman\', Times, serif; background-color: #DCDCDC; text-align: center; border: 1px solid black;">
+            <tr>
+               <td><strong>Total en letras:</strong> ' . $totalEnLetras . '</td>
+            </tr>
+            <tr>
+               <td><strong>Condición de la operación:</strong> ' . $nombreCondicion . '</td>
+            </tr>
+        </table>';
+
 
 
 
         //tabla de productos
         $pdf->writeHTMLCell('', '', '', '', $tablaContenido, 0, 1, 0, true, 'L', true);
-
+        /*
         
         $x = 11;
         $y = $pdf->GetY() + 5;    
@@ -962,38 +992,9 @@ class VentasController extends Controller
         // Dibuja el rectángulo redondeado
         $pdf->RoundedRect($x, $y, $width, $height, $radius, '0101', 'DF', array('all' => array('width' => 0.5, 'color' => '#DCDCDC')));
 
-
+*/
 
         //Condiciones
-        // Condiciones
-        switch ($dte->ventas->condicion) {
-            case 1:
-                $nombreCondicion = 'Contado';
-                break;
-            case 2:
-                $nombreCondicion = 'A Crédito';
-                break;
-            case 3:
-                $nombreCondicion = 'Otro';
-                break;
-            default:
-                $nombreCondicion = '';
-                break;
-        }
-
-        // Agregar texto dentro del rectángulo en mayúsculas y negrita
-        
-            $pdf->SetXY($x + 5, $y);
-        
-
-        //$pdf->Cell($width, 5, 'Total en letras: ' . $totalEnLetras, 0, 1, 'L');
-        $pdf->writeHTML('<p style="margin-left: 40px; text-align: center"> <strong>   Total en letras:</strong> ' . $totalEnLetras . '</p>');
-        $pdf->writeHTML('<p style="margin-left: 40px; text-align: center"> <strong>  Condicion de la operación:</strong> ' . $nombreCondicion . '</p>');
-        // Volver a la fuente normal si necesitas más texto después
-        $pdf->SetFont('Times', '', 10); // Cambia a fuente normal
-
-        // Ajusta la posición Y para la tabla
-       // $y += $height + 5;
 
         if ($dte->ventas->estado == "Anulada") {
             //marca de agua por si es factura anulada
@@ -1004,6 +1005,22 @@ class VentasController extends Controller
             // Restablecer la transparencia
             $pdf->SetAlpha(1);
         }
+
+        // Agregar texto dentro del rectángulo en mayúsculas y negrita
+
+        $pdf->SetXY($x + 5, $y);
+
+
+        //$pdf->Cell($width, 5, 'Total en letras: ' . $totalEnLetras, 0, 1, 'L');
+        // $pdf->writeHTML('<p style="margin-left: 40px; text-align: center"> <strong>   Total en letras:</strong> ' . $totalEnLetras . '</p>');
+        //$pdf->writeHTML('<p style="margin-left: 40px; text-align: center"> <strong>  Condicion de la operación:</strong> ' . $nombreCondicion . '</p>');
+        // Volver a la fuente normal si necesitas más texto después
+        //  $pdf->SetFont('Times', '', 10); // Cambia a fuente normal
+
+        // Ajusta la posición Y para la tabla
+        // $y += $height + 5;
+
+
 
         return response($pdf->Output('Factura_' . $dte->codigo_generacion . '.pdf', 'S'))
             ->header('Content-Type', 'application/pdf');

@@ -34,3 +34,4 @@ Route::prefix('iniciarcontingencia')->group(function () {
     Route::post('/', [ContingenciaController::class, 'IniciarContingencia']);
 });
 Route::get('/contingenciaactiva', [ContingenciaController::class, 'verificarContingencia']);
+Route::get('/transmitirunouno/{id}', [DTEController::class, 'transmitirUnoAUno']);

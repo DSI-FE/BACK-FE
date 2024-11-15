@@ -10,6 +10,7 @@ class MiCorreo extends Mailable
 {
     use Queueable, SerializesModels;
 
+    public $emisor;
     public $nombre;
     public $fecha;
     public $codigo_generacion;
@@ -18,8 +19,9 @@ class MiCorreo extends Mailable
     public $dte;
     public $json;
 
-    public function __construct( $nombre, $fecha, $codigo_generacion, $numero_control, $contenidoPDF, $dte, $json)
+    public function __construct($emisor, $nombre, $fecha, $codigo_generacion, $numero_control, $contenidoPDF, $dte, $json)
     {
+        $this->emisor = $emisor;
         $this->nombre = $nombre;
         $this->fecha = $fecha;
         $this->codigo_generacion = $codigo_generacion;
@@ -37,7 +39,7 @@ class MiCorreo extends Mailable
     public function build()
     {
         return $this->view('mails.mi_correo')
-                    ->subject('Factura Electrónica')
+                    ->subject($this->emisor)
                     ->attachData($this->contenidoPDF, 'DTE-'. $this->dte->codigo_generacion .'.pdf', [
                         'mime' => 'application/pdf',
                     ])
