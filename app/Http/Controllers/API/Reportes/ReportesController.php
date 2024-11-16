@@ -16,58 +16,62 @@ use TCPDF;
 class ReportesController extends Controller
 {
     //Funcion para obtener el libro de ventas a consumidor en pdf
-    public function consumidor($fechaInicio, $fechaFin)
+    public function consumidor($fecha)
     {
+        [$anio, $mes] = explode('-', $fecha);
 
         //Obtenemos la informacion del emisor
         $emisor = Emisor::first();
         //Obtenemos la informacion de las ventas
         $ventas = DTE::select('dte.fecha as dte_fecha', 'dte.codigo_generacion as codigo_generacion', 'ventas.*')
             ->join('ventas', 'dte.id_venta', '=', 'ventas.id')
-            ->whereBetween('dte.fecha', [$fechaInicio, $fechaFin])
-            ->where('ventas.estado', ['Finalizada', 'Anulada'])
+            ->whereYear('dte.fecha', $anio)
+            ->whereMonth('dte.fecha', $mes)
+            ->whereIn('ventas.estado', ['Finalizada', 'Anulada'])
             ->where('ventas.tipo_documento', 1)
             ->get();
 
 
         // Convertimos la fecha de inicio para obtener el mes y el año
-        $fechaInicioCarbon = \Carbon\Carbon::parse($fechaInicio);
-        $anio = $fechaInicioCarbon->year; // Obtiene el año de la fecha de inicio
+        $fechaI = \Carbon\Carbon::parse($fecha);
+        $nombreMes = ucfirst($fechaI->translatedFormat('F'));
 
-        // Convertimos el número del mes a texto
-        $nombreMes = $fechaInicioCarbon->formatLocalized('%B');
-        // Poner la primera letra en mayúscula
-        $nombreMes = ucfirst($nombreMes);
+        // Obtener el año en formato texto
+        $anio = $fechaI->year;
 
         //Aqui se crea el pdf y se le agrega el diseño que se necesite
         $pdf = new TCPDF();
         $pdf->AddPage('P', [216, 279]);
-        $pdf->writeHTML('<h2>' . $emisor->nombre . '</h2>, ', 0, 0, 0, 0, 'C');
+        $pdf->setMargins(15, 15, 15);
+        $pdf->SetFont('helvetica', '', 9); // Tipo de fuente, estilo (normal), tamaño
+
+        // Ahora escribes el texto con el tamaño de fuente configurado
+        $pdf->writeHTML('<h3>' . $emisor->nombre . '</h3>, ', 0, 0, 0, 0, 'C');
         $pdf->writeHTML('<h4>Libro de ventas a consumidor</h4>, ', 0, 0, 0, 0, 'C');
-        // Crear una tabla con dos columnas
-        $pdf->Cell(70, 5, 'Mes: ' . $nombreMes, 0, 0, 'L'); // Alineado a la izquierda
+
+        // Resto del código
+        $pdf->Cell(70, 5, 'Mes: ' . $nombreMes, 0, 0, 'L');
         $pdf->Cell(95, 5, 'Contribuyente: ' . $emisor->nombre_comercial, 0, 1, 'L');
         $pdf->Cell(50, 5, 'Año: ' . $anio, 0, 0, 'L');
         $pdf->Cell(35, 5, 'NRC: ' . $emisor->nrc, 0, 0, 'C');
         $pdf->Cell(90, 5, 'NIT: ' . $emisor->nit, 0, 0, 'R');
         $pdf->Ln();
-
         $tabla = '
-<table  border="0" cellpading="0" cellspacing="0" style="border-collapse: collapse; width: 100%;" >
+<table  border="0" cellpading="0" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 9px" >
     <thead>
         <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
             <th rowspan="2" style="border: 1px solid black; width: 27px">N°</th>
-            <th rowspan="2" style="border: 1px solid black; width: 70px">Fecha</th>
-            <th rowspan="2" style="border: 1px solid black; width: 125px">No. Fact.</th>
+            <th rowspan="2" style="border: 1px solid black; width: 65px">Fecha</th>
+            <th rowspan="2" style="border: 1px solid black; width: 110px">No. Fact.</th>
          
-            <th colspan="3" style="border: 1px solid black; align: center; width: 193px">Ventas</th>
-            <th rowspan="2" style="border: 1px solid black; font-size: 10px">Ventas por terceros</th>
+            <th colspan="3" style="border: 1px solid black; align: center; width: 170px">Ventas</th>
+            <th rowspan="2" style="border: 1px solid black; font-size: 9px">Ventas por terceros</th>
             <th rowspan="2" style="border: 1px solid black; width: 73px">Total</th>
         </tr>
         <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
-            <th style="border: 1px solid black; text-align: center; width: 75px">Gravadas</th>
-            <th style="border: 1px solid black; text-align: center; width: 68px">Exentas</th>
-            <th style="border: 1px solid black; text-align: center; width: 50px">No sujetas</th>
+            <th style="border: 1px solid black; text-align: center; width: 60px">Gravadas</th>
+            <th style="border: 1px solid black; text-align: center; width: 55px">Exentas</th>
+            <th style="border: 1px solid black; text-align: center; width: 55px">No sujetas</th>
         </tr>
     </thead>
     <tbody>';
@@ -87,21 +91,21 @@ class ReportesController extends Controller
             $estado = $item['estado'];
             $codigoGen = $item['codigo_generacion'];
             if ($estado === 'Anulada') {
-                $codigoGeneracion = $codigoGen . ' <strong>**Anulada**</strong>';
+                $codigoGeneracion = $codigoGen . ' <strong>**ANULADA**</strong>';
                 $totalVenta = 0;
-            }else{
+            } else {
                 $totalVenta = $item['total_pagar'];
                 $codigoGeneracion = $codigoGen;
             }
-            $tabla .= '<tr style="font-size: 12px; border: 1px dotted gray; font-size: 11px;">
+            $tabla .= '<tr style="font-size: 8.5px; border: 1px dotted gray; font-size: 8.5px;">
         <td style="border: 1px dotted gray; width: 27px; height: 15px; vertical-align: bottom;">' . $numero++ . '</td>
-        <td style="border: 1px dotted gray; width: 70px">' . $item['dte_fecha'] . '</td>
-        <td style="border: 1px dotted gray; width: 125px">' . $codigoGeneracion. '</td>
-        <td style="border: 1px dotted gray; width: 75px">$ ' . number_format($totalVenta,2). '</td>
-        <td style="border: 1px dotted gray; width: 68px">$ ' . $item['total_exentas'] . '</td>
-        <td style="border: 1px dotted gray; width: 50px">$ 0.00</td>
+        <td style="border: 1px dotted gray; width: 65px">' . $item['dte_fecha'] . '</td>
+        <td style="border: 1px dotted gray; width: 110px">' . $codigoGeneracion . '</td>
+        <td style="border: 1px dotted gray; width: 60px">$ ' . number_format($totalVenta, 2) . '</td>
+        <td style="border: 1px dotted gray; width: 55px">$ ' . $item['total_exentas'] . '</td>
+        <td style="border: 1px dotted gray; width: 55px">$ 0.00</td>
         <td style="border: 1px dotted gray">$ 0.00</td>
-        <td style="border: 1px dotted gray; width: 73px">$ ' . number_format($totalVenta,2) . '</td>
+        <td style="border: 1px dotted gray; width: 73px">$ ' . number_format($totalVenta, 2) . '</td>
         </tr>';
         }
         $tabla .= '
@@ -156,38 +160,165 @@ class ReportesController extends Controller
     }
 
 
-    //Funcion para obtener el libro de ventas a contribuyente en pdf
-    public function contribuyente($fechaInicio, $fechaFin)
-    {
-        //data
-        $ventas = DB::table('dte')
-            ->select('dte.*', 'dte.fecha AS dte_fecha', 'ventas.*', 'cliente.nrc', 'cliente.nombres', 'cliente.apellidos')
-            ->join('ventas', 'dte.id_venta', '=', 'ventas.id')
-            ->join('cliente', 'ventas.cliente_id', '=', 'cliente.id')
-            ->whereBetween('dte.fecha', [$fechaInicio, $fechaFin])
-            ->where('ventas.estado', 'Finalizada')
-            ->where('ventas.tipo_documento', 2)
-            ->get();
+     //Funcion para obtener el libro de ventas a contribuyente en pdf
+     public function contribuyente($fecha)
+     {
+            [$anio, $mes] = explode('-', $fecha);
 
-        /*Este reporte va ser casi identco al anterior, solo que cambiara el tipo de documento, ya so será 1, sino 2 
-         y cambiara el estilo del pdf*/
-        $pdf = new TCPDF();
-        $pdf->AddPage();
-        $pdf->setPageOrientation('L');
-        $pdf->writeHTML('<h2>Todo el contenido del pdf apartir de aqui</h2>');
-        $pdf->writeHTML('<p>DATA: ' . $ventas . '</p>');
+         // Obtener la información del emisor
+         $emisor = Emisor::first();
+         //data
+         $ventas = DB::table('dte')
+             ->select('dte.*', 'dte.fecha AS dte_fecha', 'ventas.*', 'cliente.nrc', 'cliente.nombres', 'cliente.apellidos')
+             ->join('ventas', 'dte.id_venta', '=', 'ventas.id')
+             ->join('cliente', 'ventas.cliente_id', '=', 'cliente.id')
+             ->whereYear('dte.fecha', $anio)
+             ->whereMonth('dte.fecha', $mes)
+             ->whereIn('ventas.estado', ['Finalizada', 'Anulada'])
+             ->where('ventas.tipo_documento', 2)
+             ->get();
+ 
+            // Convertir la fecha de inicio para obtener el mes y el año
+            $fechaI = \Carbon\Carbon::parse($fecha);
+            $nombreMes = ucfirst($fechaI->translatedFormat('F'));
 
+            // Obtener el año en formato texto
+            $anio = $fechaI->year;
 
-
-        //Retorna el pdf
-        return response($pdf->Output('Contribuyente'  . '.pdf', 'S'))
-            ->header('Content-Type', 'application/pdf');
-    }
+         // Inicializar el PDF
+         $pdf = new TCPDF();
+         $pdf->AddPage('L', 'A4');
+         $pdf->SetFont('Helvetica', '', 12);
+         $pdf->setMargins(15, 15, 15);
+         $pdf->SetFont('helvetica', '', 9); // Tipo de fuente, estilo (normal), tamaño
+ 
+         // Título y encabezado del PDF
+         $pdf->writeHTML('<h2>' . $emisor->nombre . '</h2>, ', 0, 0, 0, 0, 'C');
+         $pdf->writeHTML('<h4>Libro de ventas a contribuyente</h4>, ', 0, 0, 0, 0, 'C');
+         $pdf->Ln(5);
+ 
+         // Encabezados adicionales
+         $pdf->Cell(70, 5, 'Mes: ' . $nombreMes, 0, 0, 'L');
+         $pdf->Cell(180, 5, 'Contribuyente: ' . $emisor->nombre_comercial, 0, 1, 'R');
+         $pdf->Cell(50, 5, 'Año: ' . $anio, 0, 0, 'L');
+         $pdf->Cell(145, 5, 'NRC: ' . $emisor->nrc, 0, 0, 'C');
+         $pdf->Cell(62, 5, 'NIT: ' . $emisor->nit, 0, 1, 'R');
+         $pdf->Ln(5);
+ 
+         // Definir estructura de la tabla
+         $tabla = '
+     <table border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 8.5px">
+         <thead>
+             <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
+                 <th rowspan="2" style="border: 1px solid black; width: 25px">Corr.</th>
+                 <th rowspan="2" style="border: 1px solid black; width: 55px">Fecha</th>
+                 <th rowspan="2" style="border: 1px solid black; width: 130px">No. de CCF</th>
+                 <th rowspan="2" style="border: 1px solid black; width: 55px">N.R.C</th>
+                 <th rowspan="2" style="border: 1px solid black; width: 160px">Cliente</th>
+                 <th colspan="3" style="border: 1px solid black; align: center; width: 180px">Ventas</th>
+                 <th rowspan="2" style="border: 1px solid black; width: 55px">Impuesto Percibido</th>
+                 <th rowspan="2" style="border: 1px solid black; width: 65px">Total</th>
+             </tr>
+             <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
+             <th style="border: 1px solid black; text-align: center; width: 50px">Exentas</th>
+             <th style="border: 1px solid black; text-align: center; width: 65px">Internas Gravadas</th>
+             <th style="border: 1px solid black; text-align: center; width: 65px">Debito Fiscal</th>
+         </tr>
+         </thead>
+         <tbody>';
+ 
+         // Inicializar acumuladores para los totales
+         $totalExentas = 0;
+         $totalGravadas = 0;
+         $totalDebitoFiscal = 0;
+         $totalImpuestoPercibido = 0;
+         $totalGeneral = 0;
+ 
+         // Generar filas de la tabla con datos
+         /*foreach ($ventas as $index => $venta) {
+             $totalExentas += $venta->total_exentas;
+             $totalGravadas += $venta->total_gravadas;
+             $totalDebitoFiscal += $venta->total_iva;
+             $totalImpuestoPercibido += 0.00;  // Columna de IMPUESTO PERCIBIDO es 0.00
+             $totalGeneral += $venta->total_pagar;*/
+ 
+              // Generar filas de la tabla con datos
+     foreach ($ventas as $index => $venta) {
+         $isAnulada = $venta->estado === 'Anulada';
+ 
+         // Determinar valores según el estado de la venta
+         $exentas = $isAnulada ? '$0.00' : '$ ' . number_format($venta->total_exentas, 2);
+         $gravadas = $isAnulada ? '$0.00' : '$ ' . number_format($venta->total_gravadas, 2);
+         $debitoFiscal = $isAnulada ? '$0.00' : '$ ' . number_format($venta->total_iva, 2);
+         $impuestoPercibido = '$0.00';
+         $total = $isAnulada ? '$0.00' : '$ ' . number_format($venta->total_pagar, 2);
+         $cliente = $venta->nombres . ' ' . $venta->apellidos;
+         
+         if ($isAnulada) {
+             $cliente .= '<strong> **ANULADA**</strong>';
+         } else {
+             // Acumular solo si la venta no está anulada
+             $totalExentas += $venta->total_exentas;
+             $totalGravadas += $venta->total_gravadas;
+             $totalDebitoFiscal += $venta->total_iva;
+             $totalImpuestoPercibido += 0.00;  // Impuesto Percibido es 0.00
+             $totalGeneral += $venta->total_pagar;
+         }
+ 
+         $tabla .= '<tr style="font-size: 8.5px; border: 1px dotted gray;">
+         <td style="border: 1px dotted gray; width: 25px; height: 15px; text-align: center; vertical-align: bottom;">' . ($index + 1) . '</td>
+         <td style="border: 1px dotted gray; text-align: center; width: 55px">' . $venta->dte_fecha . '</td>
+         <td style="border: 1px dotted gray; text-align: center; width: 130px">' . $venta->codigo_generacion . '</td>
+         <td style="border: 1px dotted gray; text-align: center; width: 55px">' . ($venta->nrc ?? 'N/A') . '</td>
+         <td style="border: 1px dotted gray; text-align: left; width: 160px">' . $cliente . '</td>
+         <td style="border: 1px dotted gray; text-align: center; width: 50px">' . $exentas . '</td>
+         <td style="border: 1px dotted gray; text-align: center; width: 65px">' . $gravadas . '</td>
+         <td style="border: 1px dotted gray; text-align: center; width: 65px">' . $debitoFiscal . '</td>
+         <td style="border: 1px dotted gray; text-align: center; width: 55px">' . $impuestoPercibido . '</td>
+         <td style="border: 1px dotted gray; text-align: center; width: 65px">' . $total . '</td>
+     </tr>';
+         }
+ 
+         // Agregar fila de totales
+         $tabla .= '<tr style="font-weight: bold; text-align: right; font-size: 8.5px">
+     <td colspan="5" style="border: 1px solid black; text-align: center;">TOTALES</td>
+     <td style="border: 1px solid black; text-align: center;">$ ' . number_format($totalExentas, 2) . '</td>
+     <td style="border: 1px solid black; text-align: center;">$ ' . number_format($totalGravadas, 2) . '</td>
+     <td style="border: 1px solid black; text-align: center;">$ ' . number_format($totalDebitoFiscal, 2) . '</td>
+     <td style="border: 1px solid black; text-align: center;">$ ' . number_format($totalImpuestoPercibido, 2) . '</td>
+     <td style="border: 1px solid black; text-align: center;">$ ' . number_format($totalGeneral, 2) . '</td>
+ </tr>';
+ 
+         $tabla .= '</tbody></table>';
+ 
+         // Escribir la tabla en el PDF
+         $pdf->writeHTML($tabla, true, false, true, false, '');
+ 
+         // Agregar un espacio vertical adicional entre la tabla y la firma
+         $pdf->Ln(20);
+         //Resumen del libro
+         $pdf->SetFont('Helvetica', '', 12);
+         //Espacio para firma del contador
+         $pdf->Cell(160);
+         $pdf->Cell(90, 5, '___________________________________', 0, 1, 'R');
+         //Nombre del contador
+         $pdf->Cell(160);
+         $pdf->Cell(75, 5, $emisor->contador, 0, 1, 'R');
+         //Rol del que firma
+         $pdf->Cell(160);
+         $pdf->Cell(60, 5, $emisor->rol_contador, 0, 1, 'R');
+         $pdf->Ln();
+ 
+         // Retornar el PDF
+         return response($pdf->Output('Contribuyente - ' . $nombreMes . '.pdf', 'S'))
+             ->header('Content-Type', 'application/pdf');
+     }
+ 
 
     //Funcion para obtener el reporte de inventario en pdf
     public function inventario()
     {
-        //data
+        // Obtenemos los productos
         $productos = DB::table('productos')
             ->join('inventario', 'inventario.producto_id', '=', 'productos.id')
             ->join('unidadmedida', 'inventario.unidad_medida_id', '=', 'unidadmedida.id')
@@ -195,42 +326,241 @@ class ReportesController extends Controller
             ->where('inventario.equivalencia', 1)
             ->get();
 
+        $emisor = Emisor::first();
 
         $pdf = new TCPDF();
-        $pdf->AddPage();
-        $pdf->writeHTML('<h2>NombreEmpresa</h2>', 0, 0, 0, 0, 'C');
-        $pdf->writeHTML('<h2>Reporte de inventario</h2>', 0, 0, 0, 0, 'C');
-        $pdf->writeHTML('<p>LLevara 1 tabla con 7 columnas</p>');
-        $pdf->writeHTML('<p>N°, Codigo del producto, Nombre del producto, Unidad de medida, Existencias, Precio de Costo, Precio de Venta.</p>');
-        $pdf->writeHTML('<p>Y al final un campo total que sume el precio de costo de todos los productos</p>');
-        $pdf->writeHTML('<p>DATA' . $productos . '</p>');
 
+        $pdf->SetPrintHeader(false); 
+        $pdf->SetPrintFooter(false); 
+        $pdf->AddPage('P', [216, 279]);
+        $pdf->setMargins(15, 15, 15);
+        $pdf->SetFont('Helvetica', '', 9);
+        $pdf->writeHTML('<h2>' . $emisor->nombre . '</h2>', true, 0, 0, 0, 'C');
+        $pdf->writeHTML('<h2>Reporte de inventario</h2><br>', true, 0, 0, 0, 'C');
 
-        //Retorna el pdf
-        return response($pdf->Output('Inventario'  . '.pdf', 'S'))
-            ->header('Content-Type', 'application/pdf');
+        // Datos del emisor
+        $pdf->Cell(70, 5, 'Contribuyente: ' . $emisor->nombre_comercial, 0, 1, 'L');
+        $pdf->Cell(60, 5, 'NIT: ' . $emisor->nit, 0, 0, 'L');
+        $pdf->Cell(70, 5, 'NRC: ' . $emisor->nrc, 0, 1, 'R');
+        $pdf->Ln();
+
+        $tabla = '
+        <table  border="0" cellpading="0" cellspacing="0" style="border-collapse: collapse; width: 100%; height:100%;" >
+            <thead>
+                <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef; font-size: 8.5px">
+                    <th rowspan="2" style="border: 1px solid black; width: 27px;height:30px;">N°</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 50px">Código producto</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 135px">Nombre producto</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 65px">Unidad de medida</th>
+
+                    <th style="border-top: 1px solid black; border-left: 1px solid black; border-right: 1px solid black; text-align: center; 
+                    width: 65px;">Existencias</th>
+
+                    <th rowspan="2" style="border: 1px solid black; width: 55px">Precio de costo</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 55px">Precio de venta</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 65px">Total</th>
+
+                </tr>
+                <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
+                    <th style="border-bottom: 1px solid black; text-align: center; width: 75px;"></th>
+                </tr>
+            </thead>
+            <tbody>';
+        //contador
+        $numero = 1;
+        //variables para guardar las sumas
+        $sumaPrecioCosto = 0;
+        $sumaPrecioVenta = 0;
+        $sumaTotal = 0;
+
+        // Iterar para mostrar cada venta en la tabla
+        foreach ($productos as $item) {
+            $total = $item->existencias * $item->precioCosto;
+
+            $sumaPrecioCosto += $item->precioCosto;
+            $sumaPrecioVenta += $item->precioVenta;
+            $sumaTotal += $total;
+
+            $tabla .= '
+            <tr style="font-size: 12px; border: 1px dotted gray; font-size: 8.5px;">
+                <td style="border: 1px dotted gray; width: 27px; height: 15px; vertical-align: bottom;">' . $numero++ . '</td>
+                <td style="border: 1px dotted gray; width: 50px; text-align: center">' . $item->cod_prod. '</td>
+                <td style="border: 1px dotted gray; width: 135px">' . $item->nombreProducto . '</td>
+                <td style="border: 1px dotted gray; width: 65px; text-align: center">' .$item->nombreUnidad . '</td>
+                <td style="border: 1px dotted gray; width: 65px; text-align: center;"> ' . number_format($item->existencias, 2) . '</td>
+                <td style="border: 1px dotted gray; width: 55px">$ ' . $item->precioCosto . '</td>
+                <td style="border: 1px dotted gray; width: 55px">$' . $item->precioVenta . '</td>
+                <td style="border: 1px dotted gray; width: 65px">$ ' . number_format($total, 2) . '</td>
+            </tr>';
+        }
+        $tabla .= '
+        <hr>
+        <tr style="font-weight: bold">
+            <td colspan="4" style="text-align: center; width: 342px; border-top: 1px solid black; border-bottom: 1px solid black;">SUMAS</td>
+            <td style="width: 55px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black;"></td>
+            <td style="width: 55px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black;"></td>
+            <td style="width: 65px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black;">$ ' . number_format($sumaTotal, 2) . '</td>
+        </tr>
+        </tbody>
+        </table>
+        <hr>';
+
+        // Ahora escribimos la tabla en el PDF
+        $pdf->writeHTML($tabla, true, false, true, false, '');
+
+        //Espacio para firma del contador
+        $pdf->Ln(15);
+
+        $pdf->Cell(90, 5, '___________________________________', 0, 1, 'R');
+
+        //Nombre del contador
+        $pdf->Cell(75, 5, $emisor->contador, 0, 1, 'R');
+        $pdf->Cell(60, 5, $emisor->rol_contador, 0, 1, 'R');
+
+        // Retornamos el PDF
+        return response($pdf->Output('Inventario.pdf', 'S'))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename="ReporteInventario.pdf"');
     }
 
-    public function compras($mes, $anio)
+    public function compras($fecha)
     {
+        [$anio, $mes] = explode('-', $fecha);
 
         $compras = DB::table('compras')
-            ->join('proveedor', 'proveedor.id', '=', 'compras.proveedor_id')
-            ->join('tipo_proveedor', 'tipo_proveedor.id', '=', 'proveedor.id')
-            ->select('compras.*', 'proveedor.*', 'tipo_proveedor.tipo')
-            ->whereYear('compras.fecha', $anio)
-            ->whereMonth('compras.fecha', $mes)
-            ->get();
+        ->join('proveedor', 'proveedor.id', '=', 'compras.proveedor_id')
+        ->join('tipo_proveedor', 'tipo_proveedor.id', '=', 'proveedor.id')
+        ->select('compras.*', 'proveedor.*', 'tipo_proveedor.tipo')
+        ->whereYear('compras.fecha', $anio) 
+        ->whereMonth('compras.fecha', $mes)
+        ->get();
 
-        //Obtenemos las compras del mes
+       
+        //Obtenemos el nombre del mes y año
+        $fechaI = \Carbon\Carbon::parse($fecha);
+        $mes = $fechaI->month;
+        $anio = $fechaI->year;
 
         $pdf = new TCPDF();
-        $pdf->AddPage();
-        $pdf->setPageOrientation('L');
-        $pdf->writeHTML('<h2>NombreEmpresa</h2>', 0, 0, 0, 0, 'C');
-        $pdf->writeHTML('<h2>Libro de compras</h2>', 0, 0, 0, 0, 'C');
-        $pdf->writeHTML('<p>DATA: ' . $compras . '</p>');
 
+        $emisor = Emisor::first();
+
+        $pdf->AddPage('L', [216, 279]);
+        $pdf->setPageOrientation('L');
+        $pdf->setMargins(10, 15, 15);
+        $pdf->SetFont('Helvetica', '', 9);
+        $pdf->writeHTML('<h2>' . $emisor->nombre . '</h2>, ', 0, 0, 0, 0, 'C');
+        $pdf->writeHTML('<h2>Libro de compras</h2> <br>', 0, 0, 0, 0, 'C');
+
+        // Crear una tabla con dos columnas
+        $pdf->Cell(70, 5, 'Contribuyente: '. $emisor->nombre_comercial, 0, 0, 'L'); // Alineado a la izquierda
+        $pdf->Ln();
+        $pdf->Cell(60, 5, 'NIT: ' . $emisor->nit, 0, 0, 'L');
+        $pdf->Cell(70, 5, 'MES: ' . $mes ?? 'N.A Mes inválido', 0, 0, 'C');
+        $pdf->Cell(60, 5, 'AÑO: ' . $anio, 0, 0, 'C');
+        $pdf->Cell(70, 5, 'NRC: ' . $emisor->nrc, 0, 0, 'R');
+        $pdf->Ln();
+        $pdf->Ln();
+
+        //$pdf->writeHTML('<p>DATA: '.$compras.'</p>');
+        
+        //Imprimir tabla
+        $tabla = '
+        <table  border="0" cellpading="0" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 9px" >
+            <thead>
+                <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
+                    <th rowspan="2" style="border: 1px solid black; width: 25px; font-size: 9px">Corr</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 55px; font-size: 9px">Fecha</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 100px; font-size: 9px">No. de CCF</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 45px; font-size: 9px">N.R.C</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 180px; font-size: 9px">Proveedor</th>
+
+                    <th colspan="3" style="border: 1px solid black; align: center; width: 85px; height: 15px; font-size: 9px">Compras exentas</th>
+                    
+                    <th colspan="3" style="border: 1px solid black; align: center; width: 145; font-size: 9px">Compras gravadas</th>
+
+                    <th rowspan="2" style="border: 1px solid black; width: 48px; font-size: 9px">IVA percibido</th>
+                    <th rowspan="2" style="border: 1px solid black; width: 55px; font-size: 9px">Total</th>
+
+                </tr>
+                <tr style="text-align: center; font-weight: bold; background-color: #f4f2ef">
+                    <th style="border: 1px solid black; text-align: center; width: 42px; font-size: 9px">Internas</th>
+                    <th style="border: 1px solid black; text-align: center; width: 43px; font-size: 9px">Internaciones</th>
+
+                    <th style="border: 1px solid black; text-align: center; width: 55px;font-size: 9px">Internas</th>
+                    <th style="border: 1px solid black; text-align: center; width: 40px;font-size: 9px">Impor</th>
+                    <th style="border: 1px solid black; text-align: center; width: 50px;font-size: 9px">IVA C.F.</th>
+                </tr>
+            </thead>
+            <tbody>';
+
+        //contador
+        $numero = 1;
+        //variables para guardar las sumas
+        $sumaGravadas = 0;
+        $sumaIvaCompra = 0;
+        $sumaIvaPercibido = 0;
+        $sumaTotalCompra = 0;
+        $sumaTotalCompraExenta = 0;
+        // Iterar para mostrar cada compra en la tabla
+        foreach ($compras as $item) {
+            $sumaGravadas += $item->comprasGravadas;
+            $sumaIvaCompra += $item -> ivaCompra;
+            $sumaIvaPercibido += $item -> ivaPercibido;
+            $sumaTotalCompra += $item->totalCompra;
+            $sumaTotalCompraExenta += $item->comprasExentas;
+
+            $tabla .= 
+            '<tr style="border: 1px dotted gray; font-size: 8.5px">
+                <td style="border: 1px dotted gray; width: 25px;">' . $numero++ . '</td>
+                <td style="border: 1px dotted gray; width: 55px; ">' . $item->fecha . '</td>
+                <td style="border: 1px dotted gray; width: 100px;">' . $item->numeroCCF . '</td>
+                <td style="border: 1px dotted gray; width: 45px;">' . $item->nrc . '</td>
+                <td style="border: 1px dotted gray; width: 180px;">' . $item->nombre . '</td>
+
+                <td style="border: 1px dotted gray; width: 42px;">$' . number_format($item->comprasExentas, 2) . '</td>
+                <td style="border: 1px dotted gray; width: 43px;">$' . "0.00" . '</td>
+
+                <td style="border: 1px dotted gray; width: 55px">$ ' . number_format($item->comprasGravadas, 2) . '</td>
+                <td style="border: 1px dotted gray; width: 40px">$ ' . "0.00". '</td>
+                <td style="border: 1px dotted gray; width: 50px">$ ' . number_format($item->ivaCompra, 2) . '</td>
+
+                <td style="border: 1px dotted gray; width: 48px">$ ' . number_format($item->ivaPercibido, 2) . '</td>
+                <td style="border: 1px dotted gray; width: 55px">$ ' . number_format($item->totalCompra, 2) . '</td>
+            </tr>';
+        }
+
+        // Añadir la fila de sumas al final de la tabla
+        $tabla .= '
+        <br>
+        <tr style="font-weight: bold; font-size: 9px;">
+            <td style="width: 405; height: 15px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black;">' . "SUMAS:" .'</td>
+
+            <td style="width: 42px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$' . number_format($sumaTotalCompraExenta , 2). '</td>
+            <td style="width: 43px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$' . "0.00" . '</td>
+
+            <td style="width: 55px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$ ' . number_format($sumaGravadas, 2) . '</td>
+            <td style="width: 40px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$' . "0.00" . '</td>
+            <td style="width: 50px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$ ' . number_format($sumaIvaCompra, 2) . '</td>
+            
+            <td style="width: 48px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$ ' . number_format($sumaIvaPercibido, 2) . '</td>
+            <td style="width: 55px; text-align: center; border-top: 1px solid black; border-bottom: 1px solid black; ">$ ' . number_format($sumaTotalCompra, 2) . '</td>
+        </tr>
+
+        </tbody></table>';
+
+
+        // Escribir la tabla en el PDF
+        $pdf->writeHTML($tabla, true, false, true, false, '');
+
+        //Espacio para firma del contador
+        $pdf->Ln(10);
+
+        $pdf->Cell(90, 5, '___________________________________', 0, 1, 'R');
+        $pdf->Cell(75, 5, $emisor->contador, 0, 1, 'R');
+
+        //Nombre del contador
+        $pdf->Cell(105, 5, $emisor->rol_contador, 0, 1, 'C');
 
         //Retorna el pdf
         return response($pdf->Output('Compras'  . '.pdf', 'S'))
@@ -239,8 +569,10 @@ class ReportesController extends Controller
 
 
     //Retorna un excel con ventas a consumidor
-    public function ConsumidorExcel($fechaInicio, $fechaFin)
+    public function ConsumidorExcel($fecha)
     {
+        [$anio, $mes] = explode('-', $fecha);
+
         // Encabezados del Excel
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
@@ -275,7 +607,8 @@ class ReportesController extends Controller
         // Información de las ventas
         $ventas = DTE::select('dte.*', 'dte.fecha as dte_fecha', 'ventas.*')
             ->join('ventas', 'dte.id_venta', '=', 'ventas.id')
-            ->whereBetween('dte.fecha', [$fechaInicio, $fechaFin])
+            ->whereYear('dte.fecha', $anio)
+            ->whereMonth('dte.fecha', $mes)
             ->where('ventas.estado', 'Finalizada')
             ->where('ventas.tipo_documento', 1)
             ->get();
@@ -308,8 +641,9 @@ class ReportesController extends Controller
         ]);
     }
 
-    public function ContribuyenteExcel($fechaInicio, $fechaFin)
+    public function ContribuyenteExcel($fecha)
     {
+        [$anio, $mes] = explode('-', $fecha);
         // Encabezados del Excel
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
@@ -347,7 +681,8 @@ class ReportesController extends Controller
             ->select('dte.*', 'dte.fecha AS dte_fecha', 'ventas.*', 'cliente.nrc', 'cliente.nombres', 'cliente.apellidos')
             ->join('ventas', 'dte.id_venta', '=', 'ventas.id')
             ->join('cliente', 'ventas.cliente_id', '=', 'cliente.id')
-            ->whereBetween('dte.fecha', [$fechaInicio, $fechaFin])
+            ->whereYear('dte.fecha', $anio)
+            ->whereMonth('dte.fecha', $mes)
             ->where('ventas.estado', 'Finalizada')
             ->where('ventas.tipo_documento', 2)
             ->get();
@@ -456,8 +791,9 @@ class ReportesController extends Controller
     }
 
     //Funcion para descargar excel para las compras
-    public function comprasExcel($mes, $anio)
+    public function comprasExcel($fecha)
     {
+        [$anio, $mes] = explode('-', $fecha);
 
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
